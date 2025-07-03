@@ -7,7 +7,7 @@ interface RegisterPageProps {
 }
 
 export const RegisterPage: React.FC<RegisterPageProps> = ({ onSwitchToLogin }) => {
-  const { signUp, loading } = useAuth();
+  const { signUp, loading, isSigningUp } = useAuth(); // Use isSigningUp from context
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -19,62 +19,59 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onSwitchToLogin }) =
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [success, setSuccess] = useState(false);
+  const [success, setSuccess] = useState(false); // Local success state for showing success message
   const [successMessage, setSuccessMessage] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setSuccess(false);
+    setSuccessMessage('');
     
-    // Validation
     if (!formData.name || !formData.email || !formData.password || !formData.confirmPassword) {
       setError('Please fill in all fields');
       return;
     }
-    
     if (formData.password !== formData.confirmPassword) {
       setError('Passwords do not match');
       return;
     }
-    
     if (formData.password.length < 6) {
       setError('Password must be at least 6 characters long');
       return;
     }
     
-    setIsSubmitting(true);
-    
     console.log('Submitting registration form:', {
       name: formData.name,
       email: formData.email,
       role: formData.role,
-      team: formData.team
+      team: formData.team,
     });
     
+    // signUp now comes from the context, which uses useMutation
     const { success: signUpSuccess, error: authError } = await signUp(
       formData.email,
       formData.password,
       {
         name: formData.name,
         role: formData.role,
-        team: formData.team
+        team: formData.team,
       }
     );
     
     if (!signUpSuccess) {
-      setError(authError || 'Registration failed');
+      setError(authError || 'Registration failed. Please try again.');
     } else {
       setSuccess(true);
-      if (authError && authError.includes('email')) {
-        setSuccessMessage('Please check your email to confirm your account before signing in.');
+      // Supabase might require email confirmation. The message from AuthContext's signUp might indicate this.
+      // For now, a generic success message, or one based on authError if it contains specifics (like email confirmation needed)
+      if (authError && authError.toLowerCase().includes('confirmation')) {
+        setSuccessMessage('Account created! Please check your email to confirm your account before signing in.');
       } else {
-        setSuccessMessage('Account created successfully! You can now sign in.');
+        setSuccessMessage('Account created successfully! You can now try to sign in.');
       }
     }
-    
-    setIsSubmitting(false);
+    // isSigningUp from context will handle disabling form elements
   };
 
   const getPasswordStrength = (password: string) => {
@@ -90,7 +87,8 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onSwitchToLogin }) =
   const strengthColors = ['bg-red-500', 'bg-orange-500', 'bg-yellow-500', 'bg-green-500'];
   const strengthLabels = ['Weak', 'Fair', 'Good', 'Strong'];
 
-  if (loading) {
+  // Use the global loading state from AuthContext for initial page load
+  if (loading && !isSigningUp) { // Show general loading only if not in the middle of a signup operation
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
         <div className="text-center">
@@ -127,7 +125,6 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onSwitchToLogin }) =
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
       <div className="max-w-md w-full">
         <div className="bg-white rounded-2xl shadow-xl p-8">
-          {/* Logo and Header */}
           <div className="text-center mb-8">
             <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
               <Building2 className="w-8 h-8 text-white" />
@@ -136,7 +133,6 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onSwitchToLogin }) =
             <p className="text-gray-600 mt-2">Join our CRM platform</p>
           </div>
 
-          {/* Error Message */}
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 flex items-center">
               <AlertCircle className="w-5 h-5 text-red-600 mr-2 flex-shrink-0" />
@@ -144,7 +140,6 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onSwitchToLogin }) =
             </div>
           )}
 
-          {/* Register Form */}
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -159,7 +154,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onSwitchToLogin }) =
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   className="pl-10 pr-4 py-3 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="Enter your full name"
-                  disabled={isSubmitting}
+                  disabled={isSigningUp} // Use isSigningUp
                 />
               </div>
             </div>
@@ -177,7 +172,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onSwitchToLogin }) =
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   className="pl-10 pr-4 py-3 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="Enter your email"
-                  disabled={isSubmitting}
+                  disabled={isSigningUp} // Use isSigningUp
                 />
               </div>
             </div>
@@ -191,7 +186,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onSwitchToLogin }) =
                   value={formData.role}
                   onChange={(e) => setFormData({ ...formData, role: e.target.value as any })}
                   className="w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  disabled={isSubmitting}
+                  disabled={isSigningUp} // Use isSigningUp
                 >
                   <option value="sales">Sales Rep</option>
                   <option value="manager">Manager</option>
@@ -210,7 +205,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onSwitchToLogin }) =
                     value={formData.team}
                     onChange={(e) => setFormData({ ...formData, team: e.target.value })}
                     className="pl-10 pr-4 py-3 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    disabled={isSubmitting}
+                    disabled={isSigningUp} // Use isSigningUp
                   >
                     <option value="Sales">Sales</option>
                     <option value="Marketing">Marketing</option>
@@ -234,19 +229,18 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onSwitchToLogin }) =
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                   className="pl-10 pr-12 py-3 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="Create a password"
-                  disabled={isSubmitting}
+                  disabled={isSigningUp} // Use isSigningUp
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  disabled={isSubmitting}
+                  disabled={isSigningUp} // Use isSigningUp
                 >
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
               </div>
               
-              {/* Password Strength Indicator */}
               {formData.password && (
                 <div className="mt-2">
                   <div className="flex space-x-1 mb-1">
@@ -279,19 +273,18 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onSwitchToLogin }) =
                   onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
                   className="pl-10 pr-12 py-3 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="Confirm your password"
-                  disabled={isSubmitting}
+                  disabled={isSigningUp} // Use isSigningUp
                 />
                 <button
                   type="button"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                   className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  disabled={isSubmitting}
+                  disabled={isSigningUp} // Use isSigningUp
                 >
                   {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
               </div>
               
-              {/* Password Match Indicator */}
               {formData.confirmPassword && (
                 <div className="mt-2 flex items-center">
                   {formData.password === formData.confirmPassword ? (
@@ -311,10 +304,10 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onSwitchToLogin }) =
 
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSigningUp} // Use isSigningUp
               className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
             >
-              {isSubmitting ? (
+              {isSigningUp ? (
                 <>
                   <Loader className="w-5 h-5 animate-spin mr-2" />
                   Creating Account...
@@ -325,14 +318,13 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onSwitchToLogin }) =
             </button>
           </form>
 
-          {/* Login Link */}
           <div className="text-center mt-6">
             <p className="text-gray-600">
               Already have an account?{' '}
               <button
                 onClick={onSwitchToLogin}
                 className="text-blue-600 hover:text-blue-700 font-medium"
-                disabled={isSubmitting}
+                disabled={isSigningUp} // Use isSigningUp
               >
                 Sign in
               </button>
