@@ -38,7 +38,7 @@ export const getUser = async (): Promise<User | null> => {
 };
 
 export const onAuthStateChange = (callback: (event: string, session: import('@supabase/supabase-js').Session | null) => void) => {
-  const { data: { subscription } } = supabase.auth.onAuthStateChanged(callback);
+  const { data: { subscription } } = supabase.auth.onAuthStateChange(callback);
   return subscription;
 };
 
