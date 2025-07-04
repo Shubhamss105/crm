@@ -176,7 +176,7 @@ export const OpportunitiesPage: React.FC = () => {
       await opportunityService.updateOpportunity(selectedOpportunity.id, dataToUpdate, user.id);
       setSelectedOpportunity(null);
       setShowForm(false);
-      // Data will update via subscription, or refetch if preferred: fetchData();
+      fetchData(); // Explicitly refetch data
     } catch (err: any) {
       setError(err.message);
     }
@@ -186,7 +186,7 @@ export const OpportunitiesPage: React.FC = () => {
     if (!user) return;
     try {
       await opportunityService.updateOpportunity(opportunityId, { stage: newStage }, user.id);
-      // Data will update via subscription
+      fetchData(); // Explicitly refetch data
     } catch (err: any) {
       setError(err.message);
     }
@@ -196,7 +196,7 @@ export const OpportunitiesPage: React.FC = () => {
     if (!user) return;
     try {
       await opportunityService.deleteOpportunity(opportunityId, user.id);
-      // Data will update via subscription
+      fetchData(); // Explicitly refetch data
     } catch (err: any) {
       setError(err.message);
     }
