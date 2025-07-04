@@ -162,17 +162,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       let clientId = '';
       
       if (userData.clientName && userData.clientDomain) {
-        // Check if client already exists
-        const { data: existingClient } = await supabase
+        // Check if client already exists - use limit(1) instead of single()
+        const { data: existingClients, error: checkError } = await supabase
           .from('clients')
           .select('id')
           .eq('domain', userData.clientDomain.toLowerCase())
-          .single();
+          .limit(1);
 
-        if (existingClient) {
-          clientId = existingClient.id;
+        if (checkError) {
+          console.error('Error checking for existing client:', checkError);
+          return { success: false, error: 'Failed to check for existing organization' };
+        }
+
+        if (existingClients && existingClients.length > 0) {
+          clientId = existingClients[0].id;
         } else {
-          // Create new client
+          // Create new client using service role key for RLS bypass
           const { data: newClient, error: clientError } = await supabase
             .from('clients')
             .insert({
