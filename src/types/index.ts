@@ -17,20 +17,21 @@ export interface Lead {
 
 export interface Opportunity {
   id: string;
+  user_id: string; // Added for data ownership
   name: string;
-  leadId?: string;
-  customerId?: string;
+  lead_id?: string;      // Changed from leadId
+  customer_id?: string;  // Changed from customerId
   value: number;
   currency: string;
   stage: 'prospecting' | 'qualification' | 'proposal' | 'negotiation' | 'closed-won' | 'closed-lost';
-  probability: number;
-  expectedCloseDate: Date;
-  assignedTo: string;
-  createdAt: Date;
-  lastActivity: Date;
+  probability: number;    // Percentage, e.g., 0.75 for 75%
+  expected_close_date: string; // Changed from expectedCloseDate, type string
+  assigned_to: string;    // Changed from assignedTo (user ID or name)
+  created_at: string;     // Changed from createdAt, type string
+  last_activity: string;  // Changed from lastActivity, type string
   description?: string;
-  lostReason?: string;
-  nextAction?: string;
+  lost_reason?: string;    // Changed from lostReason
+  next_action?: string;    // Changed from nextAction
   tags: string[];
 }
 
