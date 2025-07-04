@@ -48,31 +48,62 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        loadUserProfile(session.user);
-      } else {
-        setLoading(false);
+    let mounted = true;
+
+    const initializeAuth = async () => {
+      try {
+        // Get initial session
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError) {
+          console.error('Error getting session:', sessionError);
+          if (mounted) setLoading(false);
+          return;
+        }
+
+        if (session?.user && mounted) {
+          await loadUserProfile(session.user);
+        } else if (mounted) {
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error('Error initializing auth:', error);
+        if (mounted) setLoading(false);
       }
-    });
+    };
+
+    initializeAuth();
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return;
+
+      console.log('Auth state changed:', event, !!session?.user);
+
       if (event === 'SIGNED_IN' && session?.user) {
         await loadUserProfile(session.user);
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
         setClient(null);
         setLoading(false);
+      } else if (event === 'TOKEN_REFRESHED' && session?.user) {
+        // Don't reload profile on token refresh if we already have user data
+        if (!user) {
+          await loadUserProfile(session.user);
+        }
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const loadUserProfile = async (supabaseUser: SupabaseUser) => {
     try {
+      console.log('Loading user profile for:', supabaseUser.id);
+
       // Get user profile
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
@@ -82,11 +113,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (profileError) {
         console.error('Error loading profile:', profileError);
+        // If profile doesn't exist, user might need to complete registration
         setLoading(false);
         return;
       }
 
       if (profile) {
+        console.log('Profile loaded:', profile.name);
         setUser(profile);
 
         // Get client information
@@ -99,6 +132,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (clientError) {
           console.error('Error loading client:', clientError);
         } else {
+          console.log('Client loaded:', clientData.name);
           setClient(clientData);
         }
       }
@@ -119,19 +153,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       if (error) {
+        setLoading(false);
         return { success: false, error: error.message };
       }
 
       if (data.user) {
         await loadUserProfile(data.user);
+      } else {
+        setLoading(false);
       }
 
       return { success: true };
     } catch (error) {
       console.error('Unexpected sign in error:', error);
-      return { success: false, error: 'An unexpected error occurred' };
-    } finally {
       setLoading(false);
+      return { success: false, error: 'An unexpected error occurred' };
     }
   };
 
@@ -151,10 +187,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       if (authError) {
+        setLoading(false);
         return { success: false, error: authError.message };
       }
 
       if (!authData.user) {
+        setLoading(false);
         return { success: false, error: 'Failed to create user account' };
       }
 
@@ -171,13 +209,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (checkError) {
           console.error('Error checking for existing client:', checkError);
+          setLoading(false);
           return { success: false, error: 'Failed to check for existing organization' };
         }
 
         if (existingClients && existingClients.length > 0) {
           clientId = existingClients[0].id;
         } else {
-          // Create new client using service role key for RLS bypass
+          // Create new client
           const { data: newClient, error: clientError } = await supabase
             .from('clients')
             .insert({
@@ -194,6 +233,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           if (clientError) {
             console.error('Error creating client:', clientError);
+            setLoading(false);
             return { success: false, error: 'Failed to create client organization' };
           }
 
@@ -217,6 +257,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (clientError) {
           console.error('Error creating default client:', clientError);
+          setLoading(false);
           return { success: false, error: 'Failed to create organization' };
         }
 
@@ -240,15 +281,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (profileError) {
         console.error('Error creating profile:', profileError);
+        setLoading(false);
         return { success: false, error: 'Failed to create user profile' };
       }
 
+      setLoading(false);
       return { success: true };
     } catch (error) {
       console.error('Unexpected sign up error:', error);
-      return { success: false, error: 'An unexpected error occurred' };
-    } finally {
       setLoading(false);
+      return { success: false, error: 'An unexpected error occurred' };
     }
   };
 
