@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { customerService } from '../../services/customerService';
 import { CustomersList } from './CustomersList';
@@ -8,34 +8,21 @@ import { ImportModal } from '../Common/ImportModal';
 import { ExportModal } from '../Common/ExportModal';
 import { AdvancedFilters } from '../Common/AdvancedFilters';
 import { Customer } from '../../types';
-import { Plus, Upload, Download, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Upload, Download, Filter, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react';
 
-// Updated to reflect potential backend fields and types
 const customerFilterConfigs = [
   { key: 'search', label: 'Search', type: 'text' as const, placeholder: 'Search customers...' },
   {
     key: 'language',
     label: 'Language',
     type: 'select' as const,
-    options: [
-      { value: 'English', label: 'English' },
-      { value: 'Spanish', label: 'Spanish' },
-      { value: 'French', label: 'French' },
-      { value: 'German', label: 'German' },
-      // Add more languages as needed
-    ]
+    options: [ { value: 'English', label: 'English' }, { value: 'Spanish', label: 'Spanish' } ]
   },
   {
     key: 'currency',
     label: 'Currency',
     type: 'select' as const,
-    options: [
-      { value: 'USD', label: 'USD' },
-      { value: 'EUR', label: 'EUR' },
-      { value: 'GBP', label: 'GBP' },
-      { value: 'CAD', label: 'CAD' },
-      // Add more currencies as needed
-    ]
+    options: [ { value: 'USD', label: 'USD' }, { value: 'EUR', label: 'EUR' }]
   },
   { key: 'total_value_min', label: 'Min Total Value', type: 'number' as const, placeholder: '0' },
   { key: 'total_value_max', label: 'Max Total Value', type: 'number' as const, placeholder: '1000000' },
@@ -45,39 +32,32 @@ const customerFilterConfigs = [
     key: 'tags',
     label: 'Tags',
     type: 'multiselect' as const,
-    // These should ideally be fetched or dynamically generated
-    options: [
-      { value: 'enterprise', label: 'Enterprise' },
-      { value: 'vip', label: 'VIP' },
-      { value: 'loyal', label: 'Loyal Customer' },
-      { value: 'new', label: 'New Customer' },
-    ]
+    options: [ { value: 'enterprise', label: 'Enterprise' }, { value: 'vip', label: 'VIP' } ]
   }
 ];
 
-// Updated to reflect Customer type from schema
 const sampleCustomerData = {
-  name: 'Acme Corp',
-  email: 'contact@acme.com',
-  phone: '+1-555-0100',
-  company: 'Acme Corporation',
+  name: 'Sample Customer Inc.',
+  email: 'contact@samplecustomer.com',
+  phone: '+1-555-0101',
+  company: 'Sample Customer Inc.',
   language: 'English',
   currency: 'USD',
-  total_value: '75000', // Supabase might store numbers as numbers, not strings
-  tags: 'enterprise,vip', // Tags likely an array of strings
-  notes: 'Long-term client, high potential for upsell.'
+  total_value: '50000',
+  tags: 'vip',
+  notes: 'Initial prospect from webinar.'
 };
 
-
 export const CustomersPage: React.FC = () => {
-  const { user } = useAuth();
+  const { user, permissions, getModulePermissions, canView, can } = useAuth();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [showImport, setShowImport] = useState(false);
   const [showExport, setShowExport] = useState(false);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
-  const [filters, setFilters] = useState({
+
+  const [activeFilters, setActiveFilters] = useState({
     search: '',
     language: '',
     currency: '',
@@ -87,161 +67,137 @@ export const CustomersPage: React.FC = () => {
     created_at_before: '',
     tags: []
   });
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCustomers, setTotalCustomers] = useState(0);
   const limit = 10;
 
-  useEffect(() => {
-    if (!user) {
-      setError('You must be logged in to view customers.');
+  const customersModulePermissions = getModulePermissions('customers');
+
+  const fetchData = useCallback(async () => {
+    if (!user || !customersModulePermissions || !canView('customers')) {
+      setError(customersModulePermissions === undefined && user ? 'Permissions not loaded. Please wait or refresh.' : 'You do not have permission to view customers.');
       setLoading(false);
+      setCustomers([]);
+      setTotalCustomers(0);
       return;
     }
+    setError(null);
+    setLoading(true);
+    try {
+      const { data, total } = await customerService.getCustomers(
+        user.user_id,
+        currentPage,
+        limit,
+        customersModulePermissions
+      );
+      setCustomers(data);
+      setTotalCustomers(total);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [user, currentPage, limit, customersModulePermissions, canView, activeFilters]);
 
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        // TODO: Pass filters to customerService.getCustomers for server-side filtering
-        const { data, total } = await customerService.getCustomers(user.id, currentPage, limit);
-        setCustomers(data);
-        setTotalCustomers(total);
-      } catch (err: any) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    };
+  useEffect(() => {
+    if (user && permissions) {
+        fetchData();
+    }
+  }, [user, permissions, fetchData]);
 
-    fetchData();
+  useEffect(() => {
+    if (!user || !customersModulePermissions) return;
 
-    const subscription = customerService.subscribeToCustomers(user.id, (payload) => {
-      console.log('Customer subscription payload:', payload);
-      if (payload.eventType === 'INSERT') {
-        // Add to list if on page 1 or refresh to maintain order
-        // For simplicity, we can just refetch the current page or update total and let user navigate
-        setTotalCustomers((prev) => prev + 1);
-        if (currentPage === 1) { // Only add if on the first page to avoid layout shifts on other pages
-             // Check if customer already exists to prevent duplicates from rapid events
-            setCustomers(prev => prev.find(c => c.id === payload.new.id) ? prev : [payload.new as Customer, ...prev].slice(0, limit));
-        }
-      } else if (payload.eventType === 'UPDATE') {
-        setCustomers((prev) =>
-          prev.map((customer) => (customer.id === payload.new.id ? (payload.new as Customer) : customer))
-        );
-      } else if (payload.eventType === 'DELETE') {
-        setCustomers((prev) => prev.filter((customer) => customer.id !== payload.old.id));
-        setTotalCustomers((prev) => prev - 1);
-      }
+    const subscription = customerService.subscribeToCustomers(user.user_id, (payload) => {
+      fetchData();
     });
 
     return () => {
-      subscription.unsubscribe();
+      subscription?.unsubscribe();
     };
-  }, [user, currentPage]); // Add filters to dependency array when server-side filtering is implemented
+  }, [user, customersModulePermissions, fetchData]);
 
   const handleCreateCustomer = async (customerData: Partial<Customer>) => {
-    if (!user) return;
+    if (!user || !can('customers', 'create')) {
+      setError("You don't have permission to create customers.");
+      return;
+    }
     try {
-      // customerService.createCustomer will set user_id, created_at, etc.
-      await customerService.createCustomer(customerData, user.id);
+      await customerService.createCustomer(customerData, user.user_id);
       setShowForm(false);
-      // Optionally, navigate to page 1 or refresh current page
-      if (currentPage !== 1) setCurrentPage(1); // Go to first page where new item will appear
-      else { // If already on page 1, refetch to see the new customer
-        const { data, total } = await customerService.getCustomers(user.id, 1, limit);
-        setCustomers(data);
-        setTotalCustomers(total);
-      }
+      fetchData();
     } catch (err: any) {
       setError(err.message);
     }
   };
 
   const handleUpdateCustomer = async (customerData: Partial<Customer>) => {
-    if (!user || !selectedCustomer) return;
+    if (!user || !selectedCustomer || !can('customers', 'edit')) {
+      setError("You don't have permission to edit this customer.");
+      return;
+    }
     try {
-      await customerService.updateCustomer(selectedCustomer.id, customerData, user.id);
+      await customerService.updateCustomer(selectedCustomer.id, customerData, user.user_id);
       setSelectedCustomer(null);
       setShowForm(false);
-      // No need to manually update state if subscription is working correctly for updates
-      // However, for immediate feedback, you might refetch or update locally:
-      // const { data, total } = await customerService.getCustomers(user.id, currentPage, limit);
-      // setCustomers(data);
-      // setTotalCustomers(total);
+      fetchData();
     } catch (err: any) {
       setError(err.message);
     }
   };
 
   const handleDeleteCustomer = async (customerId: string) => {
-    if (!user) return;
-    try {
-      await customerService.deleteCustomer(customerId, user.id);
-      // State will be updated by subscription, or refetch if desired for immediate effect
-      // const { data, total } = await customerService.getCustomers(user.id, currentPage, limit);
-      // setCustomers(data);
-      // setTotalCustomers(total);
-    } catch (err: any) {
-      setError(err.message);
+    if (!user || !can('customers', 'delete')) {
+      setError("You don't have permission to delete customers.");
+      return;
+    }
+    if (window.confirm('Are you sure you want to delete this customer?')) {
+      try {
+        await customerService.deleteCustomer(customerId, user.user_id);
+        fetchData();
+      } catch (err: any) {
+        setError(err.message);
+      }
     }
   };
 
   const handleImport = async (importedData: any[]) => {
-    if (!user) return;
+    if (!user || !can('customers', 'create')) {
+      setError("You don't have permission to import (create) customers.");
+      return;
+    }
     try {
-      const customerPromises = importedData.map(data => {
+      const customerPromises = importedData.map(item => {
         const newCustomer: Partial<Customer> = {
-          name: data.name || '',
-          email: data.email || '',
-          phone: data.phone,
-          company: data.company,
-          addresses: data.addresses ? JSON.parse(data.addresses) : [], // Assuming addresses is JSON string
-          language: data.language || 'English',
-          currency: data.currency || 'USD',
-          total_value: parseFloat(data.total_value) || 0,
-          tags: data.tags ? data.tags.split(',').map((tag: string) => tag.trim()) : [],
-          notes: data.notes
+          name: item.name || 'Imported Customer',
+          email: item.email,
+          phone: item.phone,
+          company: item.company,
+          language: item.language || 'English',
+          currency: item.currency || 'USD',
+          total_value: parseFloat(item.total_value) || 0,
+          tags: item.tags ? String(item.tags).split(',').map((tag: string) => tag.trim()) : [],
+          notes: item.notes,
         };
-        return customerService.createCustomer(newCustomer, user.id);
+        return customerService.createCustomer(newCustomer, user.user_id);
       });
       await Promise.all(customerPromises);
       setShowImport(false);
-      setCurrentPage(1); // Reset to first page on import
-      // Refetch data for the current page after import
-      const { data, total } = await customerService.getCustomers(user.id, 1, limit);
-      setCustomers(data);
-      setTotalCustomers(total);
+      fetchData();
     } catch (err: any) {
       setError(`Import failed: ${err.message}`);
     }
   };
 
-  // Client-side filtering for now. Ideally, this should be server-side.
-  const filteredCustomers = customers.filter(customer => {
-    const matchesSearch = !filters.search ||
-      customer.name.toLowerCase().includes(filters.search.toLowerCase()) ||
-      customer.email.toLowerCase().includes(filters.search.toLowerCase()) ||
-      (customer.company && customer.company.toLowerCase().includes(filters.search.toLowerCase()));
-    
-    const matchesLanguage = !filters.language || customer.language === filters.language;
-    const matchesCurrency = !filters.currency || customer.currency === filters.currency;
-    
-    const matchesMinValue = !filters.total_value_min || (customer.total_value && customer.total_value >= parseFloat(filters.total_value_min));
-    const matchesMaxValue = !filters.total_value_max || (customer.total_value && customer.total_value <= parseFloat(filters.total_value_max));
-    
-    const matchesCreatedAfter = !filters.created_at_after ||
-      new Date(customer.created_at) >= new Date(filters.created_at_after);
-    const matchesCreatedBefore = !filters.created_at_before ||
-      new Date(customer.created_at) <= new Date(filters.created_at_before);
-    
-    const matchesTags = filters.tags.length === 0 || 
-      (customer.tags && filters.tags.every((tag: string) => customer.tags.includes(tag)));
-
-    return matchesSearch && matchesLanguage && matchesCurrency && 
-           matchesMinValue && matchesMaxValue && matchesCreatedAfter && 
-           matchesCreatedBefore && matchesTags;
+  const clientFilteredCustomers = customers.filter(customer => {
+    const matchesSearch = !activeFilters.search ||
+      customer.name.toLowerCase().includes(activeFilters.search.toLowerCase()) ||
+      customer.email.toLowerCase().includes(activeFilters.search.toLowerCase()) ||
+      (customer.company && customer.company.toLowerCase().includes(activeFilters.search.toLowerCase()));
+    return matchesSearch;
   });
 
   const totalPages = Math.ceil(totalCustomers / limit);
@@ -252,20 +208,37 @@ export const CustomersPage: React.FC = () => {
     }
   };
 
-  if (!user && !loading) { // Show login prompt only if not loading and no user
-    return <div className="p-6 text-red-600">Please log in to access the customers page.</div>;
+  if (!user || !permissions) {
+    return <div className="p-6">{loading ? 'Loading authentication details...' : 'Please log in.'}</div>;
   }
 
-  if (loading) {
+  if (!canView('customers')) {
+    return (
+      <div className="p-6 max-w-7xl mx-auto text-center">
+        <AlertTriangle className="w-12 h-12 text-yellow-500 mx-auto mb-4" />
+        <h2 className="text-xl font-semibold text-gray-700">Access Denied</h2>
+        <p className="text-gray-500">You do not have permission to view this module.</p>
+      </div>
+    );
+  }
+
+  if (loading && customers.length === 0) {
     return <div className="p-6 text-center">Loading customers...</div>;
   }
 
-  if (error) {
-    return <div className="p-6 text-red-600">Error: {error}</div>;
+  if (error && customers.length === 0) {
+     return (
+        <div className="p-6 max-w-7xl mx-auto text-center">
+            <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+            <h2 className="text-xl font-semibold text-red-700">Error</h2>
+            <p className="text-gray-500">{error}</p>
+        </div>
+     );
   }
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
+      {error && customers.length > 0 && <div className="mb-4 p-3 bg-red-100 text-red-700 border border-red-400 rounded">{error}</div>}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Customers</h1>
@@ -279,13 +252,15 @@ export const CustomersPage: React.FC = () => {
             <Filter className="w-4 h-4" />
             <span>Advanced Filters</span>
           </button>
-          <button
-            onClick={() => setShowImport(true)}
-            className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center space-x-2"
-          >
-            <Upload className="w-4 h-4" />
-            <span>Import</span>
-          </button>
+          {can('customers', 'create') && (
+            <button
+              onClick={() => setShowImport(true)}
+              className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center space-x-2"
+            >
+              <Upload className="w-4 h-4" />
+              <span>Import</span>
+            </button>
+          )}
           <button
             onClick={() => setShowExport(true)}
             className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center space-x-2"
@@ -293,38 +268,45 @@ export const CustomersPage: React.FC = () => {
             <Download className="w-4 h-4" />
             <span>Export</span>
           </button>
-          <button
-            onClick={() => {
-              setSelectedCustomer(null);
-              setShowForm(true);
-            }}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
-          >
-            <Plus className="w-4 h-4" />
-            <span>New Customer</span>
-          </button>
+          {can('customers', 'create') && (
+            <button
+              onClick={() => {
+                setSelectedCustomer(null);
+                setShowForm(true);
+              }}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
+            >
+              <Plus className="w-4 h-4" />
+              <span>New Customer</span>
+            </button>
+          )}
         </div>
       </div>
 
-      <CustomerFilters filters={filters} onFiltersChange={setFilters} />
+      <CustomerFilters filters={activeFilters} onFiltersChange={setActiveFilters} />
 
       <div className="mt-6">
         <div className="mb-4 flex items-center justify-between">
           <div className="text-sm text-gray-600">
-            Showing {filteredCustomers.length} of {totalCustomers} customers
+            Showing {clientFilteredCustomers.length} of {totalCustomers} customers
           </div>
         </div>
         
         <CustomersList
-          customers={filteredCustomers} // Use filteredCustomers for display
+          customers={clientFilteredCustomers}
+          canEdit={can('customers', 'edit')}
+          canDelete={can('customers', 'delete')}
           onEditCustomer={(customer) => {
-            setSelectedCustomer(customer);
-            setShowForm(true);
+            if (can('customers', 'edit')) {
+              setSelectedCustomer(customer);
+              setShowForm(true);
+            } else {
+              alert("You don't have permission to edit customers.");
+            }
           }}
           onDeleteCustomer={handleDeleteCustomer}
         />
 
-        {/* Pagination Controls */}
         {totalPages > 1 && (
           <div className="mt-4 flex items-center justify-between">
             <div className="text-sm text-gray-600">
@@ -338,8 +320,6 @@ export const CustomersPage: React.FC = () => {
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
-              {/* Simplified pagination: show current, next 2, prev 2, first, last */}
-              {/* For a more robust solution, consider a pagination component */}
               {Array.from({ length: totalPages }, (_, i) => i + 1)
                 .filter(page =>
                     page === 1 ||
@@ -373,7 +353,7 @@ export const CustomersPage: React.FC = () => {
         )}
       </div>
 
-      {showForm && (
+      {showForm && (can('customers', 'create') || (selectedCustomer !== null && can('customers', 'edit'))) && (
         <CustomerForm
           customer={selectedCustomer}
           onSubmit={selectedCustomer ? handleUpdateCustomer : handleCreateCustomer}
@@ -385,44 +365,38 @@ export const CustomersPage: React.FC = () => {
       )}
 
       <ImportModal
-        isOpen={showImport}
+        isOpen={showImport && can('customers', 'create')}
         onClose={() => setShowImport(false)}
         onImport={handleImport}
         entityType="customers"
-        sampleData={sampleCustomerData} // Use updated sampleCustomerData
+        sampleData={sampleCustomerData}
       />
 
       <ExportModal
         isOpen={showExport}
         onClose={() => setShowExport(false)}
-        data={filteredCustomers} // Export filtered data
+        data={clientFilteredCustomers}
         entityType="customers"
       />
 
       <AdvancedFilters
         isOpen={showAdvancedFilters}
         onClose={() => setShowAdvancedFilters(false)}
-        filters={filters}
-        onFiltersChange={setFilters}
-        filterConfigs={customerFilterConfigs} // Use updated filterConfigs
+        filters={activeFilters}
+        onFiltersChange={setActiveFilters}
+        filterConfigs={customerFilterConfigs}
         onApply={() => {
-          // When server-side filtering is done, trigger refetch here
-          setCurrentPage(1); // Reset to page 1 when applying new filters
-          // fetchData(); // or similar to refetch with new filters
+          setCurrentPage(1);
+          fetchData();
         }}
         onReset={() => {
-          setFilters({
-            search: '',
-            language: '',
-            currency: '',
-            total_value_min: '',
-            total_value_max: '',
-            created_at_after: '',
-            created_at_before: '',
-            tags: []
+          setActiveFilters({
+            search: '', language: '', currency: '',
+            total_value_min: '', total_value_max: '',
+            created_at_after: '', created_at_before: '', tags: []
           });
           setCurrentPage(1);
-           // fetchData(); // or similar to refetch with reset filters
+          fetchData();
         }}
       />
     </div>

@@ -80,11 +80,64 @@ export interface Activity {
   createdAt: Date;
 }
 
-export interface User {
+// RBAC Types
+export interface Role {
+  id: string; // uuid
+  name: string;
+  is_super_admin: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RolePermissionEntry {
+  id: string; // uuid
+  role_id: string; // uuid
+  module: string; // e.g., 'leads', 'customers', 'settings_users'
+  view_type: 'all' | 'assigned' | 'none';
+  can_create: boolean;
+  can_edit: boolean;
+  can_delete: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ModulePermission {
+  view_type: 'all' | 'assigned' | 'none';
+  can_create: boolean;
+  can_edit: boolean;
+  can_delete: boolean;
+}
+
+export interface UserPermissions {
+  isSuperAdmin: boolean;
+  modules: {
+    [moduleKey: string]: ModulePermission; // e.g., modules['leads'] = { view_type: 'all', ... }
+  };
+}
+
+// Represents the user profile data stored in your 'user_profiles' table
+export interface UserProfile {
+  user_id: string; // Corresponds to auth.users.id (PK)
+  role_id?: string | null; // FK to roles table
+  created_by_user_id?: string | null; // FK to auth.users.id (for sub-user tracking)
+  name?: string | null;
+  email?: string | null; // Usually from auth.users but can be denormalized
+  avatar_url?: string | null;
+  created_at: string;
+  updated_at: string;
+  // Joined role data (optional, but often fetched together)
+  roles?: Role | null;
+}
+
+
+// This existing User interface might be from before Supabase Auth integration or for a different context.
+// I'm renaming it to OldUser to avoid conflict and will primarily use UserProfile.
+// If this User type is still actively used for something specific, we'll need to assess.
+export interface OldUser {
   id: string;
   name: string;
   email: string;
-  role: 'admin' | 'manager' | 'sales' | 'marketing';
+  role: 'admin' | 'manager' | 'sales' | 'marketing'; // This role system is now replaced by the new RBAC
   team: string;
   avatar?: string;
 }
