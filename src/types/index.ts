@@ -7,8 +7,8 @@ export interface Lead {
   source: 'website' | 'email' | 'social' | 'referral' | 'manual';
   score: number;
   status: 'new' | 'contacted' | 'qualified' | 'converted';
-  assignedTo?: string;
-  createdAt: Date;
+  assigned_to?: string;
+  created_at: Date;
   lastActivity?: Date;
   location?: string;
   notes?: string;
@@ -110,18 +110,15 @@ export interface DashboardMetrics {
 
 export interface CommunicationRecord {
   id: string;
-  type: 'email' | 'sms' | 'call' | 'meeting' | 'note';
+  lead_id: string;
+  type: 'email' | 'sms' | 'call';
   direction: 'inbound' | 'outbound';
-  leadId: string;
-  from: string;
-  to: string;
+  from_address: string;
+  to_address: string;
   subject?: string;
   content: string;
-  timestamp: Date;
-  status: 'sent' | 'delivered' | 'read' | 'failed';
-  attachments?: {
-    name: string;
-    size: string;
-    url: string;
-  }[];
+  timestamp: string;
+  status: string;
+  attachments?: { name: string; size: string; url: string }[];
+  user_id: string;
 }

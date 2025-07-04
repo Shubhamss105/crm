@@ -13,11 +13,14 @@ interface LeadsListProps {
   onSendEmail: (lead: Lead) => void;
   onSendSMS: (lead: Lead) => void;
   onViewHistory: (lead: Lead) => void;
+  currentPage: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
 }
 
-export const LeadsList: React.FC<LeadsListProps> = ({ 
-  leads, 
-  onEditLead, 
+export const LeadsList: React.FC<LeadsListProps> = ({
+  leads,
+  onEditLead,
   onDeleteLead,
   selectedLeads,
   onSelectLead,
@@ -25,26 +28,40 @@ export const LeadsList: React.FC<LeadsListProps> = ({
   onManageTags,
   onSendEmail,
   onSendSMS,
-  onViewHistory
+  onViewHistory,
+  currentPage,
+  totalPages,
+  onPageChange
 }) => {
   const getStatusColor = (status: Lead['status']) => {
     switch (status) {
-      case 'new': return 'bg-blue-100 text-blue-800';
-      case 'contacted': return 'bg-yellow-100 text-yellow-800';
-      case 'qualified': return 'bg-green-100 text-green-800';
-      case 'converted': return 'bg-purple-100 text-purple-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'new':
+        return 'bg-blue-100 text-blue-800';
+      case 'contacted':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'qualified':
+        return 'bg-green-100 text-green-800';
+      case 'converted':
+        return 'bg-purple-100 text-purple-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
     }
   };
 
   const getSourceColor = (source: Lead['source']) => {
     switch (source) {
-      case 'website': return 'bg-blue-100 text-blue-700';
-      case 'email': return 'bg-green-100 text-green-700';
-      case 'social': return 'bg-purple-100 text-purple-700';
-      case 'referral': return 'bg-orange-100 text-orange-700';
-      case 'manual': return 'bg-gray-100 text-gray-700';
-      default: return 'bg-gray-100 text-gray-700';
+      case 'website':
+        return 'bg-blue-100 text-blue-700';
+      case 'email':
+        return 'bg-green-100 text-green-700';
+      case 'social':
+        return 'bg-purple-100 text-purple-700';
+      case 'referral':
+        return 'bg-orange-100 text-orange-700';
+      case 'manual':
+        return 'bg-gray-100 text-gray-700';
+      default:
+        return 'bg-gray-100 text-gray-700';
     }
   };
 
@@ -184,10 +201,10 @@ export const LeadsList: React.FC<LeadsListProps> = ({
                   </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  {lead.assignedTo || 'Unassigned'}
+                  {lead.assigned_to || 'Unassigned'}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {new Date(lead.createdAt).toLocaleDateString()}
+                  {new Date(lead.created_at).toLocaleDateString()}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                   <div className="flex items-center justify-end space-x-1">
@@ -202,7 +219,7 @@ export const LeadsList: React.FC<LeadsListProps> = ({
                       onClick={() => onSendSMS(lead)}
                       disabled={!lead.phone}
                       className="text-green-600 hover:text-green-900 p-1 hover:bg-green-50 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      title={lead.phone ? "Send SMS" : "No phone number"}
+                      title={lead.phone ? 'Send SMS' : 'No phone number'}
                     >
                       <MessageSquare className="w-4 h-4" />
                     </button>
@@ -234,7 +251,7 @@ export const LeadsList: React.FC<LeadsListProps> = ({
           </tbody>
         </table>
       </div>
-      
+
       {leads.length === 0 && (
         <div className="text-center py-12">
           <div className="text-gray-500 text-lg">No leads found</div>

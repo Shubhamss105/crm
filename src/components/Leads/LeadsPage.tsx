@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../../contexts/AuthContext';
+import { leadsService } from '../../services/leadsService';
 import { LeadsList } from './LeadsList';
 import { LeadForm } from './LeadForm';
 import { LeadFilters } from './LeadFilters';
@@ -10,42 +12,62 @@ import { ConversationHistory } from './ConversationHistory';
 import { ImportModal } from '../Common/ImportModal';
 import { ExportModal } from '../Common/ExportModal';
 import { AdvancedFilters } from '../Common/AdvancedFilters';
-import { mockLeads } from '../../data/mockData';
 import { Lead, CommunicationRecord } from '../../types';
-import { Plus, Upload, Download, Filter, MessageCircle, Users, CheckSquare } from 'lucide-react';
+import { Plus, Upload, Download, Filter, MessageCircle, Users, CheckSquare, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const leadFilterConfigs = [
-  { key: 'search', label: 'Search', type: 'text' as const, placeholder: 'Search leads...' },
-  { key: 'status', label: 'Status', type: 'select' as const, options: [
-    { value: 'new', label: 'New' },
-    { value: 'contacted', label: 'Contacted' },
-    { value: 'qualified', label: 'Qualified' },
-    { value: 'converted', label: 'Converted' }
-  ]},
-  { key: 'source', label: 'Source', type: 'select' as const, options: [
-    { value: 'website', label: 'Website' },
-    { value: 'email', label: 'Email' },
-    { value: 'social', label: 'Social Media' },
-    { value: 'referral', label: 'Referral' },
-    { value: 'manual', label: 'Manual' }
-  ]},
-  { key: 'assignedTo', label: 'Assigned To', type: 'select' as const, options: [
-    { value: 'Alice Johnson', label: 'Alice Johnson' },
-    { value: 'Bob Smith', label: 'Bob Smith' },
-    { value: 'Carol Davis', label: 'Carol Davis' },
-    { value: 'David Wilson', label: 'David Wilson' }
-  ]},
-  { key: 'scoreMin', label: 'Min Score', type: 'number' as const, placeholder: '0' },
-  { key: 'scoreMax', label: 'Max Score', type: 'number' as const, placeholder: '100' },
-  { key: 'createdAfter', label: 'Created After', type: 'date' as const },
-  { key: 'createdBefore', label: 'Created Before', type: 'date' as const },
-  { key: 'tags', label: 'Tags', type: 'multiselect' as const, options: [
-    { value: 'enterprise', label: 'Enterprise' },
-    { value: 'high-priority', label: 'High Priority' },
-    { value: 'hot-lead', label: 'Hot Lead' },
-    { value: 'linkedin', label: 'LinkedIn' },
-    { value: 'startup', label: 'Startup' }
-  ]}
+  { key: 'search', label: 'Search', type: 'text', placeholder: 'Search leads...' },
+  {
+    key: 'status',
+    label: 'Status',
+    type: 'select',
+    options: [
+      { value: 'new', label: 'New' },
+      { value: 'contacted', label: 'Contacted' },
+      { value: 'qualified', label: 'Qualified' },
+      { value: 'converted', label: 'Converted' }
+    ]
+  },
+  {
+    key: 'source',
+    label: 'Source',
+    type: 'select',
+    options: [
+      { value: 'website', label: 'Website' },
+      { value: 'email', label: 'Email' },
+      { value: 'social', label: 'Social Media' },
+      { value: 'referral', label: 'Referral' },
+      { value: 'manual', label: 'Manual' }
+    ]
+  },
+  {
+    key: 'assigned_to',
+    label: 'Assigned To',
+    type: 'select',
+    options: [
+      { value: 'Alice Johnson', label: 'Alice Johnson' },
+      { value: 'Bob Smith', label: 'Bob Smith' },
+      { value: 'Carol Davis', label: 'Carol Davis' },
+      { value: 'David Wilson', label: 'David Wilson' },
+      { value: '', label: 'Unassigned' }
+    ]
+  },
+  { key: 'scoreMin', label: 'Min Score', type: 'number', placeholder: '0' },
+  { key: 'scoreMax', label: 'Max Score', type: 'number', placeholder: '100' },
+  { key: 'createdAfter', label: 'Created After', type: 'date' },
+  { key: 'createdBefore', label: 'Created Before', type: 'date' },
+  {
+    key: 'tags',
+    label: 'Tags',
+    type: 'multiselect',
+    options: [
+      { value: 'enterprise', label: 'Enterprise' },
+      { value: 'high-priority', label: 'High Priority' },
+      { value: 'hot-lead', label: 'Hot Lead' },
+      { value: 'linkedin', label: 'LinkedIn' },
+      { value: 'startup', label: 'Startup' }
+    ]
+  }
 ];
 
 const sampleLeadData = {
@@ -55,80 +77,15 @@ const sampleLeadData = {
   company: 'Example Corp',
   source: 'website',
   score: '85',
-  assignedTo: 'Alice Johnson',
+  assigned_to: 'Alice Johnson',
   location: 'San Francisco, CA',
   tags: 'enterprise,high-priority'
 };
 
-// Mock communication data
-const mockCommunications: CommunicationRecord[] = [
-  {
-    id: '1',
-    type: 'email',
-    direction: 'outbound',
-    leadId: '1',
-    from: 'alice@crmpo.com',
-    to: 'john.doe@techcorp.com',
-    subject: 'Introduction - CRM Pro Solutions',
-    content: 'Dear John,\n\nI hope this email finds you well. My name is Alice Johnson, and I\'m reaching out from CRM Pro.\n\nI noticed your interest in our solutions and wanted to personally introduce myself. We specialize in helping companies like TechCorp Inc. streamline their operations and achieve their business goals.\n\nI\'d love to schedule a brief 15-minute call to learn more about your current challenges and see how we might be able to help.\n\nWould you be available for a quick conversation this week?\n\nBest regards,\nAlice Johnson\nCRM Pro\nalice@crmpo.com',
-    timestamp: new Date(2024, 0, 22, 10, 30),
-    status: 'sent'
-  },
-  {
-    id: '2',
-    type: 'email',
-    direction: 'inbound',
-    leadId: '1',
-    from: 'john.doe@techcorp.com',
-    to: 'alice@crmpo.com',
-    subject: 'Re: Introduction - CRM Pro Solutions',
-    content: 'Hi Alice,\n\nThank you for reaching out. I\'m definitely interested in learning more about your solutions.\n\nWe\'re currently evaluating different CRM options for our growing team. Would Thursday afternoon work for a call?\n\nBest,\nJohn',
-    timestamp: new Date(2024, 0, 22, 14, 15),
-    status: 'read'
-  },
-  {
-    id: '3',
-    type: 'sms',
-    direction: 'outbound',
-    leadId: '1',
-    from: '+1-555-0200',
-    to: '+1-555-0123',
-    content: 'Hi John, this is Alice from CRM Pro. Just confirming our call for Thursday at 2 PM. Looking forward to speaking with you!',
-    timestamp: new Date(2024, 0, 24, 9, 0),
-    status: 'delivered'
-  },
-  {
-    id: '4',
-    type: 'call',
-    direction: 'outbound',
-    leadId: '1',
-    from: 'Alice Johnson',
-    to: 'John Doe',
-    subject: 'Discovery Call',
-    content: 'Had a great 30-minute discovery call with John. Discussed their current challenges with lead management and demonstrated our key features. John is very interested and wants to see a proposal. Next steps: Send proposal by Friday.',
-    timestamp: new Date(2024, 0, 24, 14, 0),
-    status: 'sent'
-  },
-  {
-    id: '5',
-    type: 'email',
-    direction: 'outbound',
-    leadId: '1',
-    from: 'alice@crmpo.com',
-    to: 'john.doe@techcorp.com',
-    subject: 'Proposal for TechCorp Inc. - CRM Pro Solutions',
-    content: 'Dear John,\n\nThank you for the great conversation yesterday. As promised, I\'m attaching our detailed proposal for TechCorp Inc.\n\nOur solution includes:\n✓ Complete CRM setup and configuration\n✓ Data migration from your current system\n✓ Team training for up to 20 users\n✓ 90 days of premium support\n\nThe proposal includes detailed pricing, implementation timeline, and terms.\n\nI\'m confident this solution will help TechCorp achieve its growth goals. Please review and let me know if you have any questions.\n\nBest regards,\nAlice Johnson',
-    timestamp: new Date(2024, 0, 25, 11, 0),
-    status: 'sent',
-    attachments: [
-      { name: 'CRM_Pro_Proposal_TechCorp.pdf', size: '2.3 MB', url: '#' },
-      { name: 'Implementation_Timeline.pdf', size: '1.1 MB', url: '#' }
-    ]
-  }
-];
-
-export const LeadsPage: React.FC = () => {
-  const [leads, setLeads] = useState<Lead[]>(mockLeads);
+const LeadsPage: React.FC = () => {
+  const { user } = useAuth();
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [communications, setCommunications] = useState<CommunicationRecord[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [showImport, setShowImport] = useState(false);
@@ -144,11 +101,10 @@ export const LeadsPage: React.FC = () => {
   const [smsLead, setSmsLead] = useState<Lead | null>(null);
   const [historyLead, setHistoryLead] = useState<Lead | null>(null);
   const [selectedLeads, setSelectedLeads] = useState<string[]>([]);
-  const [communications, setCommunications] = useState<CommunicationRecord[]>(mockCommunications);
   const [filters, setFilters] = useState({
     status: '',
     source: '',
-    assignedTo: '',
+    assigned_to: '',
     score: '',
     search: '',
     scoreMin: '',
@@ -157,49 +113,110 @@ export const LeadsPage: React.FC = () => {
     createdBefore: '',
     tags: []
   });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalLeads, setTotalLeads] = useState(0);
+  const limit = 10;
 
-  const handleCreateLead = (leadData: Partial<Lead>) => {
-    const newLead: Lead = {
-      id: Date.now().toString(),
-      name: leadData.name || '',
-      email: leadData.email || '',
-      phone: leadData.phone,
-      company: leadData.company,
-      source: leadData.source || 'manual',
-      score: leadData.score || 0,
-      status: 'new',
-      assignedTo: leadData.assignedTo,
-      createdAt: new Date(),
-      location: leadData.location,
-      notes: leadData.notes,
-      tags: leadData.tags || []
+  // Fetch paginated data
+  useEffect(() => {
+    if (!user) {
+      setError('You must be logged in to view leads.');
+      setLoading(false);
+      return;
+    }
+
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const { data, total } = await leadsService.getLeads(user.id, currentPage, limit);
+        setLeads(data);
+        setTotalLeads(total);
+        // Fetch communications for leads on the current page
+        const commsPromises = data.map(lead => leadsService.getCommunications(lead.id, user.id));
+        const commsArrays = await Promise.all(commsPromises);
+        setCommunications(commsArrays.flat());
+      } catch (err: any) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
     };
-    setLeads([newLead, ...leads]);
-    setShowForm(false);
-  };
 
-  const handleUpdateLead = (leadData: Partial<Lead>) => {
-    if (selectedLead) {
-      setLeads(leads.map(lead => 
-        lead.id === selectedLead.id 
-          ? { ...lead, ...leadData }
-          : lead
-      ));
-      setSelectedLead(null);
+    fetchData();
+
+    // Subscribe to real-time updates
+    const leadsSubscription = leadsService.subscribeToLeads(user.id, (payload) => {
+      if (payload.eventType === 'INSERT') {
+        setLeads((prev) => [payload.new, ...prev]);
+        setTotalLeads((prev) => prev + 1);
+      } else if (payload.eventType === 'UPDATE') {
+        setLeads((prev) => prev.map((lead) => (lead.id === payload.new.id ? payload.new : lead)));
+      } else if (payload.eventType === 'DELETE') {
+        setLeads((prev) => prev.filter((lead) => lead.id !== payload.old.id));
+        setTotalLeads((prev) => prev - 1);
+      }
+    });
+
+    const commsSubscription = leadsService.subscribeToCommunications(user.id, (payload) => {
+      if (payload.eventType === 'INSERT') {
+        setCommunications((prev) => [payload.new, ...prev]);
+      } else if (payload.eventType === 'UPDATE') {
+        setCommunications((prev) => prev.map((comm) => (comm.id === payload.new.id ? payload.new : comm)));
+      } else if (payload.eventType === 'DELETE') {
+        setCommunications((prev) => prev.filter((comm) => comm.id !== payload.old.id));
+      }
+    });
+
+    return () => {
+      leadsSubscription.unsubscribe();
+      commsSubscription.unsubscribe();
+    };
+  }, [user, currentPage]);
+
+  const handleCreateLead = async (leadData: Partial<Lead>) => {
+    if (!user) return;
+    try {
+      const newLead = await leadsService.createLead(
+        { ...leadData, assigned_to: leadData.assigned_to },
+        user.id
+      );
       setShowForm(false);
+      setCurrentPage(1); // Reset to first page on new lead
+    } catch (err: any) {
+      setError(err.message);
     }
   };
 
-  const handleDeleteLead = (leadId: string) => {
-    setLeads(leads.filter(lead => lead.id !== leadId));
-    setSelectedLeads(selectedLeads.filter(id => id !== leadId));
+  const handleUpdateLead = async (leadData: Partial<Lead>) => {
+    if (!user || !selectedLead) return;
+    try {
+      await leadsService.updateLead(
+        selectedLead.id,
+        { ...leadData, assigned_to: leadData.assigned_to },
+        user.id
+      );
+      setSelectedLead(null);
+      setShowForm(false);
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const handleDeleteLead = async (leadId: string) => {
+    if (!user) return;
+    try {
+      await leadsService.deleteLead(leadId, user.id);
+      setSelectedLeads((prev) => prev.filter((id) => id !== leadId));
+    } catch (err: any) {
+      setError(err.message);
+    }
   };
 
   const handleSelectLead = (leadId: string) => {
-    setSelectedLeads(prev => 
-      prev.includes(leadId) 
-        ? prev.filter(id => id !== leadId)
-        : [...prev, leadId]
+    setSelectedLeads((prev) =>
+      prev.includes(leadId) ? prev.filter((id) => id !== leadId) : [...prev, leadId]
     );
   };
 
@@ -207,7 +224,7 @@ export const LeadsPage: React.FC = () => {
     if (selectedLeads.length === filteredLeads.length) {
       setSelectedLeads([]);
     } else {
-      setSelectedLeads(filteredLeads.map(lead => lead.id));
+      setSelectedLeads(filteredLeads.map((lead) => lead.id));
     }
   };
 
@@ -222,12 +239,13 @@ export const LeadsPage: React.FC = () => {
     setShowTagManager(true);
   };
 
-  const handleUpdateTags = (leadId: string, tags: string[]) => {
-    setLeads(leads.map(lead => 
-      lead.id === leadId 
-        ? { ...lead, tags }
-        : lead
-    ));
+  const handleUpdateTags = async (leadId: string, tags: string[]) => {
+    if (!user) return;
+    try {
+      await leadsService.updateLead(leadId, { tags }, user.id);
+    } catch (err: any) {
+      setError(err.message);
+    }
   };
 
   const handleSendEmail = (lead: Lead) => {
@@ -245,48 +263,52 @@ export const LeadsPage: React.FC = () => {
     setShowConversationHistory(true);
   };
 
-  const handleEmailSent = (emailData: any) => {
-    // Add email to communications history
-    const newCommunication: CommunicationRecord = {
-      id: Date.now().toString(),
-      type: 'email',
-      direction: 'outbound',
-      leadId: emailLead!.id,
-      from: 'alice@crmpo.com',
-      to: emailData.to,
-      subject: emailData.subject,
-      content: emailData.body,
-      timestamp: new Date(),
-      status: 'sent',
-      attachments: emailData.attachments?.map((file: File) => ({
-        name: file.name,
-        size: `${(file.size / 1024).toFixed(1)} KB`,
-        url: '#'
-      }))
-    };
-    
-    setCommunications(prev => [newCommunication, ...prev]);
-    console.log('Email sent:', emailData);
-    alert('Email sent successfully!');
+  const handleEmailSent = async (emailData: any) => {
+    if (!user || !emailLead) return;
+    try {
+      const newCommunication: Partial<CommunicationRecord> = {
+        lead_id: emailLead.id,
+        type: 'email',
+        direction: 'outbound',
+        from_address: 'alice@crmpo.com',
+        to_address: emailData.to,
+        subject: emailData.subject,
+        content: emailData.body,
+        status: 'sent',
+        attachments: emailData.attachments?.map((file: File) => ({
+          name: file.name,
+          size: `${(file.size / 1024).toFixed(1)} KB`,
+          url: '#'
+        }))
+      };
+      await leadsService.createCommunication(newCommunication, user.id);
+      alert('Email sent successfully!');
+      setShowEmailModal(false);
+      setEmailLead(null);
+    } catch (err: any) {
+      setError(err.message);
+    }
   };
 
-  const handleSMSSent = (smsData: any) => {
-    // Add SMS to communications history
-    const newCommunication: CommunicationRecord = {
-      id: Date.now().toString(),
-      type: 'sms',
-      direction: 'outbound',
-      leadId: smsLead!.id,
-      from: '+1-555-0200',
-      to: smsData.to,
-      content: smsData.message,
-      timestamp: new Date(),
-      status: 'sent'
-    };
-    
-    setCommunications(prev => [newCommunication, ...prev]);
-    console.log('SMS sent:', smsData);
-    alert('SMS sent successfully!');
+  const handleSMSSent = async (smsData: any) => {
+    if (!user || !smsLead) return;
+    try {
+      const newCommunication: Partial<CommunicationRecord> = {
+        lead_id: smsLead.id,
+        type: 'sms',
+        direction: 'outbound',
+        from_address: '+1-555-0200',
+        to_address: smsData.to,
+        content: smsData.message,
+        status: 'sent'
+      };
+      await leadsService.createCommunication(newCommunication, user.id);
+      alert('SMS sent successfully!');
+      setShowSMSModal(false);
+      setSmsLead(null);
+    } catch (err: any) {
+      setError(err.message);
+    }
   };
 
   const handleReplyFromHistory = (type: 'email' | 'sms', originalMessage?: CommunicationRecord) => {
@@ -301,56 +323,85 @@ export const LeadsPage: React.FC = () => {
     }
   };
 
-  const handleImport = (importedData: any[]) => {
-    const newLeads: Lead[] = importedData.map((data, index) => ({
-      id: `imported-${Date.now()}-${index}`,
-      name: data.name || '',
-      email: data.email || '',
-      phone: data.phone,
-      company: data.company,
-      source: data.source || 'manual',
-      score: parseInt(data.score) || 0,
-      status: 'new',
-      assignedTo: data.assignedTo,
-      createdAt: new Date(),
-      location: data.location,
-      notes: data.notes,
-      tags: data.tags ? data.tags.split(',').map((tag: string) => tag.trim()) : []
-    }));
-    setLeads([...newLeads, ...leads]);
+  const handleImport = async (importedData: any[]) => {
+    if (!user) return;
+    try {
+      const newLeads = importedData.map((data, index) => ({
+        id: `imported-${Date.now()}-${index}`,
+        name: data.name || '',
+        email: data.email || '',
+        phone: data.phone,
+        company: data.company,
+        source: data.source || 'manual',
+        score: parseInt(data.score) || 0,
+        status: 'new',
+        assigned_to: data.assigned_to,
+        created_at: new Date().toISOString(),
+        location: data.location,
+        notes: data.notes,
+        tags: data.tags ? data.tags.split(',').map((tag: string) => tag.trim()) : [],
+        user_id: user.id
+      }));
+      await Promise.all(newLeads.map((lead) => leadsService.createLead(lead, user.id)));
+      setShowImport(false);
+      setCurrentPage(1); // Reset to first page on import
+    } catch (err: any) {
+      setError(err.message);
+    }
   };
 
-  const filteredLeads = leads.filter(lead => {
-    const matchesSearch = !filters.search || 
+  const filteredLeads = leads.filter((lead) => {
+    const matchesSearch =
+      !filters.search ||
       lead.name.toLowerCase().includes(filters.search.toLowerCase()) ||
       lead.email.toLowerCase().includes(filters.search.toLowerCase()) ||
       lead.company?.toLowerCase().includes(filters.search.toLowerCase());
-    
+
     const matchesStatus = !filters.status || lead.status === filters.status;
     const matchesSource = !filters.source || lead.source === filters.source;
-    const matchesAssignedTo = !filters.assignedTo || lead.assignedTo === filters.assignedTo;
-    
+    const matchesAssignedTo = !filters.assigned_to || lead.assigned_to === filters.assigned_to;
     const matchesMinScore = !filters.scoreMin || lead.score >= parseInt(filters.scoreMin);
     const matchesMaxScore = !filters.scoreMax || lead.score <= parseInt(filters.scoreMax);
-    
-    const matchesCreatedAfter = !filters.createdAfter || 
-      new Date(lead.createdAt) >= new Date(filters.createdAfter);
-    const matchesCreatedBefore = !filters.createdBefore || 
-      new Date(lead.createdAt) <= new Date(filters.createdBefore);
-    
-    const matchesTags = filters.tags.length === 0 || 
-      filters.tags.some((tag: string) => lead.tags.includes(tag));
+    const matchesCreatedAfter =
+      !filters.createdAfter || new Date(lead.created_at) >= new Date(filters.createdAfter);
+    const matchesCreatedBefore =
+      !filters.createdBefore || new Date(lead.created_at) <= new Date(filters.createdBefore);
+    const matchesTags = filters.tags.length === 0 || filters.tags.some((tag: string) => lead.tags.includes(tag));
 
-    return matchesSearch && matchesStatus && matchesSource && matchesAssignedTo && 
-           matchesMinScore && matchesMaxScore && matchesCreatedAfter && 
-           matchesCreatedBefore && matchesTags;
+    return (
+      matchesSearch &&
+      matchesStatus &&
+      matchesSource &&
+      matchesAssignedTo &&
+      matchesMinScore &&
+      matchesMaxScore &&
+      matchesCreatedAfter &&
+      matchesCreatedBefore &&
+      matchesTags
+    );
   });
 
-  const selectedLeadObjects = leads.filter(lead => selectedLeads.includes(lead.id));
-  const leadsWithPhone = selectedLeadObjects.filter(lead => lead.phone);
-  
-  // Get all unique tags from all leads
-  const allTags = Array.from(new Set(leads.flatMap(lead => lead.tags))).sort();
+  const selectedLeadObjects = leads.filter((lead) => selectedLeads.includes(lead.id));
+  const leadsWithPhone = selectedLeadObjects.filter((lead) => lead.phone);
+  const allTags = Array.from(new Set(leads.flatMap((lead) => lead.tags))).sort();
+  const totalPages = Math.ceil(totalLeads / limit);
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    setSelectedLeads([]); // Clear selections when changing pages
+  };
+
+  if (!user) {
+    return <div className="p-6 text-red-600">Please log in to access the leads page.</div>;
+  }
+
+  if (loading) {
+    return <div className="p-6">Loading...</div>;
+  }
+
+  if (error) {
+    return <div className="p-6 text-red-600">Error: {error}</div>;
+  }
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -405,16 +456,13 @@ export const LeadsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Selection Summary */}
       {selectedLeads.length > 0 && (
         <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-2">
                 <CheckSquare className="w-5 h-5 text-blue-600" />
-                <span className="font-medium text-blue-900">
-                  {selectedLeads.length} lead(s) selected
-                </span>
+                <span className="font-medium text-blue-900">{selectedLeads.length} lead(s) selected</span>
               </div>
               <div className="flex items-center space-x-2 text-sm text-blue-700">
                 <Users className="w-4 h-4" />
@@ -436,10 +484,10 @@ export const LeadsPage: React.FC = () => {
       <div className="mt-6">
         <div className="mb-4 flex items-center justify-between">
           <div className="text-sm text-gray-600">
-            Showing {filteredLeads.length} of {leads.length} leads
+            Showing {filteredLeads.length} of {totalLeads} leads
           </div>
         </div>
-        
+
         <LeadsList
           leads={filteredLeads}
           selectedLeads={selectedLeads}
@@ -454,7 +502,48 @@ export const LeadsPage: React.FC = () => {
           onSendEmail={handleSendEmail}
           onSendSMS={handleSendSMS}
           onViewHistory={handleViewHistory}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={handlePageChange}
         />
+
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="mt-4 flex items-center justify-between">
+            <div className="text-sm text-gray-600">
+              Page {currentPage} of {totalPages}
+            </div>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage === 1}
+                className="px-3 py-1 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                <button
+                  key={page}
+                  onClick={() => handlePageChange(page)}
+                  className={`px-3 py-1 rounded-lg ${
+                    currentPage === page
+                      ? 'bg-blue-600 text-white'
+                      : 'border border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  {page}
+                </button>
+              ))}
+              <button
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage === totalPages}
+                className="px-3 py-1 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {showForm && (
@@ -520,7 +609,7 @@ export const LeadsPage: React.FC = () => {
             setHistoryLead(null);
           }}
           lead={historyLead}
-          communications={communications.filter(comm => comm.leadId === historyLead.id)}
+          communications={communications.filter((comm) => comm.lead_id === historyLead.id)}
           onReply={handleReplyFromHistory}
         />
       )}
@@ -547,19 +636,23 @@ export const LeadsPage: React.FC = () => {
         onFiltersChange={setFilters}
         filterConfigs={leadFilterConfigs}
         onApply={() => {}}
-        onReset={() => setFilters({
-          status: '',
-          source: '',
-          assignedTo: '',
-          score: '',
-          search: '',
-          scoreMin: '',
-          scoreMax: '',
-          createdAfter: '',
-          createdBefore: '',
-          tags: []
-        })}
+        onReset={() =>
+          setFilters({
+            status: '',
+            source: '',
+            assigned_to: '',
+            score: '',
+            search: '',
+            scoreMin: '',
+            scoreMax: '',
+            createdAfter: '',
+            createdBefore: '',
+            tags: []
+          })
+        }
       />
     </div>
   );
 };
+
+export default LeadsPage;

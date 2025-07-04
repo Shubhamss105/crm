@@ -1,19 +1,22 @@
 import React, { useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 
 interface LayoutProps {
   children: React.ReactNode;
-  currentPage: string;
-  onPageChange: (page: string) => void;
 }
 
-export const Layout: React.FC<LayoutProps> = ({ children, currentPage, onPageChange }) => {
+export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const location = useLocation();
 
   const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
   const toggleMobileMenu = () => setMobileMenuOpen(!mobileMenuOpen);
+
+  // Get current path for active link highlighting
+  const currentPath = location.pathname;
 
   return (
     <div className="h-screen flex bg-gray-50 overflow-hidden">
@@ -21,8 +24,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, onPageCha
       <div className="hidden lg:flex flex-shrink-0">
         <Sidebar
           isOpen={sidebarOpen}
-          currentPage={currentPage}
-          onPageChange={onPageChange}
+          currentPath={currentPath}
           onToggle={toggleSidebar}
         />
       </div>
@@ -34,11 +36,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentPage, onPageCha
           <div className="relative w-64">
             <Sidebar
               isOpen={true}
-              currentPage={currentPage}
-              onPageChange={(page) => {
-                onPageChange(page);
-                setMobileMenuOpen(false);
-              }}
+              currentPath={currentPath}
               onToggle={toggleMobileMenu}
             />
           </div>

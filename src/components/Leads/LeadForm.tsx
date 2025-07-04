@@ -16,7 +16,7 @@ export const LeadForm: React.FC<LeadFormProps> = ({ lead, onSubmit, onCancel }) 
     company: '',
     source: 'manual' as Lead['source'],
     score: 0,
-    assignedTo: '',
+    assigned_to: '',
     location: '',
     notes: '',
     tags: [] as string[]
@@ -31,7 +31,7 @@ export const LeadForm: React.FC<LeadFormProps> = ({ lead, onSubmit, onCancel }) 
         company: lead.company || '',
         source: lead.source,
         score: lead.score,
-        assignedTo: lead.assignedTo || '',
+        assigned_to: lead.assigned_to || '',
         location: lead.location || '',
         notes: lead.notes || '',
         tags: lead.tags
@@ -41,7 +41,10 @@ export const LeadForm: React.FC<LeadFormProps> = ({ lead, onSubmit, onCancel }) 
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit(formData);
+    onSubmit({
+      ...formData,
+      score: parseInt(formData.score.toString()) || 0
+    });
   };
 
   const handleTagsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -139,8 +142,6 @@ export const LeadForm: React.FC<LeadFormProps> = ({ lead, onSubmit, onCancel }) 
               </label>
               <input
                 type="number"
-                min="0"
-                max="100"
                 value={formData.score}
                 onChange={(e) => setFormData({ ...formData, score: parseInt(e.target.value) || 0 })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -152,8 +153,8 @@ export const LeadForm: React.FC<LeadFormProps> = ({ lead, onSubmit, onCancel }) 
                 Assigned To
               </label>
               <select
-                value={formData.assignedTo}
-                onChange={(e) => setFormData({ ...formData, assignedTo: e.target.value })}
+                value={formData.assigned_to}
+                onChange={(e) => setFormData({ ...formData, assigned_to: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
                 <option value="">Unassigned</option>
@@ -198,7 +199,8 @@ export const LeadForm: React.FC<LeadFormProps> = ({ lead, onSubmit, onCancel }) 
               value={formData.notes}
               onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
               rows={4}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-LeadsList.tsx
+gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
 

@@ -1,20 +1,19 @@
-import React, { useState } from 'react';
+import React,{useState} from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { BrowserRouter as Router, Routes, Route, Navigate, } from 'react-router-dom';
 import { LoginPage } from './components/Auth/LoginPage';
 import { RegisterPage } from './components/Auth/RegisterPage';
 import { Layout } from './components/Layout/Layout';
 import { Dashboard } from './components/Dashboard/Dashboard';
-import { LeadsPage } from './components/Leads/LeadsPage';
+import LeadsPage  from './components/Leads/LeadsPage';
 import { OpportunitiesPage } from './components/Opportunities/OpportunitiesPage';
 import { CustomersPage } from './components/Customers/CustomersPage';
 import { ActivitiesPage } from './components/Activities/ActivitiesPage';
 import { ReportsPage } from './components/Reports/ReportsPage';
 import { SettingsPage } from './components/Settings/SettingsPage';
 
-const AppContent: React.FC = () => {
+const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, isLoading } = useAuth();
-  const [currentPage, setCurrentPage] = useState('dashboard');
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
 
   if (isLoading) {
     return (
@@ -28,45 +27,99 @@ const AppContent: React.FC = () => {
   }
 
   if (!user) {
-    return authMode === 'login' ? (
-      <LoginPage onSwitchToRegister={() => setAuthMode('register')} />
-    ) : (
-      <RegisterPage onSwitchToLogin={() => setAuthMode('login')} />
-    );
+    return <Navigate to="/login" replace />;
   }
 
-  const renderPage = () => {
-    switch (currentPage) {
-      case 'dashboard':
-        return <Dashboard />;
-      case 'leads':
-        return <LeadsPage />;
-      case 'opportunities':
-        return <OpportunitiesPage />;
-      case 'customers':
-        return <CustomersPage />;
-      case 'activities':
-        return <ActivitiesPage />;
-      case 'reports':
-        return <ReportsPage />;
-      case 'settings':
-        return <SettingsPage />;
-      default:
-        return <Dashboard />;
-    }
-  };
+  return <Layout>{children}</Layout>;
+};
 
-  return (
-    <Layout currentPage={currentPage} onPageChange={setCurrentPage}>
-      {renderPage()}
-    </Layout>
+const AuthRoutes: React.FC = () => {
+  const { user } = useAuth();
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+
+  if (user) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return authMode === 'login' ? (
+    <LoginPage onSwitchToRegister={() => setAuthMode('register')} />
+  ) : (
+    <RegisterPage onSwitchToLogin={() => setAuthMode('login')} />
   );
 };
 
 const App: React.FC = () => {
   return (
     <AuthProvider>
-      <AppContent />
+      <Router>
+        <Routes>
+          {/* Public routes */}
+          <Route path="/login" element={<AuthRoutes />} />
+          <Route path="/register" element={<AuthRoutes />} />
+
+          {/* Private routes */}
+          <Route
+            path="/dashboard"
+            element={
+              <PrivateRoute>
+                <Dashboard />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/leads"
+            element={
+              <PrivateRoute>
+                <LeadsPage />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/opportunities"
+            element={
+              <PrivateRoute>
+                <OpportunitiesPage />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/customers"
+            element={
+              <PrivateRoute>
+                <CustomersPage />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/activities"
+            element={
+              <PrivateRoute>
+                <ActivitiesPage />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/reports"
+            element={
+              <PrivateRoute>
+                <ReportsPage />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <PrivateRoute>
+                <SettingsPage />
+              </PrivateRoute>
+            }
+          />
+
+          {/* Redirects */}
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Routes>
+      </Router>
     </AuthProvider>
   );
 };
