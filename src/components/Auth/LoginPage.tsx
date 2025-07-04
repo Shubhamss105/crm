@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { Building2, Mail, Lock, Eye, EyeOff, AlertCircle, Loader, CheckCircle } from 'lucide-react';
+import { Building2, Mail, Lock, Eye, EyeOff, AlertCircle, Loader } from 'lucide-react';
 
 interface LoginPageProps {
   onSwitchToRegister: () => void;
@@ -38,21 +38,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSwitchToRegister }) => {
     setIsSubmitting(false);
   };
 
-  const handleDemoLogin = async () => {
-    setError('');
-    setIsSubmitting(true);
-    
-    console.log('Attempting demo login...');
-    
-    const { success, error: authError } = await signIn('shubhamsingh.ss.1407@gmail.com', 'secret');
-    
-    if (!success) {
-      setError(authError || 'Demo login failed');
-    }
-    
-    setIsSubmitting(false);
-  };
-
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
@@ -75,28 +60,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSwitchToRegister }) => {
             </div>
             <h1 className="text-2xl font-bold text-gray-900">Welcome Back</h1>
             <p className="text-gray-600 mt-2">Sign in to your CRM account</p>
-          </div>
-
-          {/* Demo Login */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-            <h3 className="text-sm font-medium text-blue-800 mb-2">Try the Demo:</h3>
-            <button
-              onClick={handleDemoLogin}
-              disabled={isSubmitting}
-              className="w-full px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isSubmitting ? (
-                <div className="flex items-center justify-center">
-                  <Loader className="w-4 h-4 animate-spin mr-2" />
-                  Signing in...
-                </div>
-              ) : (
-                'Demo Login (Shubham Singh)'
-              )}
-            </button>
-            <p className="text-xs text-blue-600 mt-2">
-              Email: shubhamsingh.ss.1407@gmail.com | Password: secret
-            </p>
           </div>
 
           {/* Error Message */}
@@ -178,7 +141,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSwitchToRegister }) => {
                 className="text-blue-600 hover:text-blue-700 font-medium"
                 disabled={isSubmitting}
               >
-                Sign up
+                Create your CRM
               </button>
             </p>
           </div>

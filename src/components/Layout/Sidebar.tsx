@@ -31,7 +31,7 @@ const menuItems = [
 ];
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, currentPage, onPageChange, onToggle }) => {
-  const { user, logout } = useAuth();
+  const { user, client, logout } = useAuth();
 
   return (
     <div className={`bg-white border-r border-gray-200 transition-all duration-300 ${
@@ -43,7 +43,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, currentPage, onPageCha
           <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
             <Building2 className="w-5 h-5 text-white" />
           </div>
-          <span className="font-bold text-xl text-gray-900">CRM Pro</span>
+          <div className="min-w-0">
+            <span className="font-bold text-lg text-gray-900 truncate block">
+              {client?.name || 'CRM Pro'}
+            </span>
+            <span className="text-xs text-gray-500 truncate block">
+              {client?.domain}
+            </span>
+          </div>
         </div>
         <button
           onClick={onToggle}
@@ -88,7 +95,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, currentPage, onPageCha
       <div className="p-4 border-t border-gray-200">
         <div className="flex items-center space-x-3">
           <img
-            src={user?.avatar || 'https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=40&h=40&fit=crop'}
+            src={user?.avatar_url || 'https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=40&h=40&fit=crop'}
             alt="User"
             className="w-8 h-8 rounded-full flex-shrink-0"
           />

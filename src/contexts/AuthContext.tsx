@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
+import type { User as SupabaseUser } from '@supabase/supabase-js';
 
 interface User {
   id: string;
@@ -13,15 +15,24 @@ interface User {
   timezone: string;
   language: string;
   date_format: string;
+  client_id: string;
   created_at: string;
   updated_at: string;
 }
 
+interface Client {
+  id: string;
+  name: string;
+  domain: string;
+  settings: any;
+}
+
 interface AuthContextType {
   user: User | null;
+  client: Client | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  signUp: (email: string, password: string, userData: { name: string; role?: string; team?: string }) => Promise<{ success: boolean; error?: string }>;
+  signUp: (email: string, password: string, userData: { name: string; role?: string; team?: string; clientName?: string; clientDomain?: string }) => Promise<{ success: boolean; error?: string }>;
   signOut: () => Promise<void>;
   updateProfile: (updates: Partial<User>) => Promise<{ success: boolean; error?: string }>;
   resetPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
@@ -31,101 +42,90 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Mock users database
-const mockUsers = [
-  {
-    id: '1',
-    email: 'shubhamsingh.ss.1407@gmail.com',
-    password: 'secret',
-    name: 'Shubham Singh',
-    role: 'admin' as const,
-    team: 'Management',
-    avatar_url: 'https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&fit=crop',
-    phone: '+1-555-0100',
-    location: 'San Francisco, CA',
-    bio: 'CRM Administrator with 5+ years of experience',
-    timezone: 'America/New_York',
-    language: 'en',
-    date_format: 'MM/DD/YYYY',
-    created_at: '2024-01-01T00:00:00Z',
-    updated_at: '2024-01-01T00:00:00Z'
-  },
-  {
-    id: '2',
-    email: 'alice@company.com',
-    password: 'password123',
-    name: 'Alice Johnson',
-    role: 'manager' as const,
-    team: 'Sales',
-    avatar_url: 'https://images.pexels.com/photos/415829/pexels-photo-415829.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&fit=crop',
-    phone: '+1-555-0101',
-    location: 'New York, NY',
-    bio: 'Sales Manager focused on enterprise clients',
-    timezone: 'America/New_York',
-    language: 'en',
-    date_format: 'MM/DD/YYYY',
-    created_at: '2024-01-01T00:00:00Z',
-    updated_at: '2024-01-01T00:00:00Z'
-  },
-  {
-    id: '3',
-    email: 'bob@company.com',
-    password: 'password123',
-    name: 'Bob Smith',
-    role: 'sales' as const,
-    team: 'Sales',
-    avatar_url: 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&fit=crop',
-    phone: '+1-555-0102',
-    location: 'Austin, TX',
-    bio: 'Sales Representative specializing in SMB accounts',
-    timezone: 'America/Chicago',
-    language: 'en',
-    date_format: 'MM/DD/YYYY',
-    created_at: '2024-01-01T00:00:00Z',
-    updated_at: '2024-01-01T00:00:00Z'
-  }
-];
-
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [client, setClient] = useState<Client | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check for stored session
-    const storedUser = localStorage.getItem('crm_user');
-    if (storedUser) {
-      try {
-        const userData = JSON.parse(storedUser);
-        setUser(userData);
-      } catch (error) {
-        console.error('Error parsing stored user data:', error);
-        localStorage.removeItem('crm_user');
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        loadUserProfile(session.user);
+      } else {
+        setLoading(false);
       }
-    }
-    setLoading(false);
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        await loadUserProfile(session.user);
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null);
+        setClient(null);
+        setLoading(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
+
+  const loadUserProfile = async (supabaseUser: SupabaseUser) => {
+    try {
+      // Get user profile
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', supabaseUser.id)
+        .single();
+
+      if (profileError) {
+        console.error('Error loading profile:', profileError);
+        setLoading(false);
+        return;
+      }
+
+      if (profile) {
+        setUser(profile);
+
+        // Get client information
+        const { data: clientData, error: clientError } = await supabase
+          .from('clients')
+          .select('*')
+          .eq('id', profile.client_id)
+          .single();
+
+        if (clientError) {
+          console.error('Error loading client:', clientError);
+        } else {
+          setClient(clientData);
+        }
+      }
+    } catch (error) {
+      console.error('Unexpected error loading user profile:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const signIn = async (email: string, password: string) => {
     try {
       setLoading(true);
-      console.log('Attempting to sign in with:', email);
       
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      const mockUser = mockUsers.find(u => u.email === email.trim() && u.password === password);
-      
-      if (!mockUser) {
-        return { success: false, error: 'Invalid email or password' };
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password
+      });
+
+      if (error) {
+        return { success: false, error: error.message };
       }
 
-      // Remove password from user object
-      const { password: _, ...userWithoutPassword } = mockUser;
-      
-      setUser(userWithoutPassword);
-      localStorage.setItem('crm_user', JSON.stringify(userWithoutPassword));
-      
-      console.log('Sign in successful');
+      if (data.user) {
+        await loadUserProfile(data.user);
+      }
+
       return { success: true };
     } catch (error) {
       console.error('Unexpected sign in error:', error);
@@ -135,43 +135,109 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const signUp = async (email: string, password: string, userData: { name: string; role?: string; team?: string }) => {
+  const signUp = async (email: string, password: string, userData: { name: string; role?: string; team?: string; clientName?: string; clientDomain?: string }) => {
     try {
       setLoading(true);
-      console.log('Attempting to sign up with:', email, userData);
-      
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // Check if user already exists
-      const existingUser = mockUsers.find(u => u.email === email.trim());
-      if (existingUser) {
-        return { success: false, error: 'User with this email already exists' };
-      }
 
-      // Create new user
-      const newUser = {
-        id: Date.now().toString(),
+      // First, create the auth user
+      const { data: authData, error: authError } = await supabase.auth.signUp({
         email: email.trim(),
         password,
-        name: userData.name,
-        role: (userData.role as any) || 'sales',
-        team: userData.team || 'Sales',
-        avatar_url: 'https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&fit=crop',
-        phone: '',
-        location: '',
-        bio: '',
-        timezone: 'America/New_York',
-        language: 'en',
-        date_format: 'MM/DD/YYYY',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
+        options: {
+          data: {
+            name: userData.name
+          }
+        }
+      });
 
-      // Add to mock database
-      mockUsers.push(newUser);
+      if (authError) {
+        return { success: false, error: authError.message };
+      }
 
-      console.log('Sign up successful');
+      if (!authData.user) {
+        return { success: false, error: 'Failed to create user account' };
+      }
+
+      // Create or get client
+      let clientId = '';
+      
+      if (userData.clientName && userData.clientDomain) {
+        // Check if client already exists
+        const { data: existingClient } = await supabase
+          .from('clients')
+          .select('id')
+          .eq('domain', userData.clientDomain.toLowerCase())
+          .single();
+
+        if (existingClient) {
+          clientId = existingClient.id;
+        } else {
+          // Create new client
+          const { data: newClient, error: clientError } = await supabase
+            .from('clients')
+            .insert({
+              name: userData.clientName,
+              domain: userData.clientDomain.toLowerCase(),
+              settings: {
+                timezone: 'America/New_York',
+                currency: 'USD',
+                language: 'en'
+              }
+            })
+            .select()
+            .single();
+
+          if (clientError) {
+            console.error('Error creating client:', clientError);
+            return { success: false, error: 'Failed to create client organization' };
+          }
+
+          clientId = newClient.id;
+        }
+      } else {
+        // For demo purposes, create a default client
+        const { data: defaultClient, error: clientError } = await supabase
+          .from('clients')
+          .insert({
+            name: `${userData.name}'s Organization`,
+            domain: `${userData.name.toLowerCase().replace(/\s+/g, '')}-${Date.now()}`,
+            settings: {
+              timezone: 'America/New_York',
+              currency: 'USD',
+              language: 'en'
+            }
+          })
+          .select()
+          .single();
+
+        if (clientError) {
+          console.error('Error creating default client:', clientError);
+          return { success: false, error: 'Failed to create organization' };
+        }
+
+        clientId = defaultClient.id;
+      }
+
+      // Create user profile
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .insert({
+          id: authData.user.id,
+          email: email.trim(),
+          name: userData.name,
+          role: (userData.role as any) || 'admin',
+          team: userData.team || 'Management',
+          client_id: clientId,
+          timezone: 'America/New_York',
+          language: 'en',
+          date_format: 'MM/DD/YYYY'
+        });
+
+      if (profileError) {
+        console.error('Error creating profile:', profileError);
+        return { success: false, error: 'Failed to create user profile' };
+      }
+
       return { success: true };
     } catch (error) {
       console.error('Unexpected sign up error:', error);
@@ -184,15 +250,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signOut = async () => {
     try {
       setLoading(true);
-      console.log('Signing out...');
-      
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.error('Error signing out:', error);
+      }
       setUser(null);
-      localStorage.removeItem('crm_user');
+      setClient(null);
     } catch (error) {
-      console.error('Error signing out:', error);
+      console.error('Unexpected error signing out:', error);
     } finally {
       setLoading(false);
     }
@@ -208,26 +273,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { success: false, error: 'No user logged in' };
       }
 
-      console.log('Updating profile:', updates);
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', user.id);
 
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      const updatedUser = {
-        ...user,
-        ...updates,
-        updated_at: new Date().toISOString()
-      };
-
-      // Update mock database
-      const userIndex = mockUsers.findIndex(u => u.id === user.id);
-      if (userIndex !== -1) {
-        const { password, ...userWithoutPassword } = mockUsers[userIndex];
-        mockUsers[userIndex] = { ...mockUsers[userIndex], ...updates, updated_at: new Date().toISOString() };
+      if (error) {
+        return { success: false, error: error.message };
       }
 
-      setUser(updatedUser);
-      localStorage.setItem('crm_user', JSON.stringify(updatedUser));
+      // Update local user state
+      setUser(prev => prev ? { ...prev, ...updates, updated_at: new Date().toISOString() } : null);
 
       return { success: true };
     } catch (error) {
@@ -238,18 +297,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const resetPassword = async (email: string) => {
     try {
-      console.log('Resetting password for:', email);
-      
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      const userExists = mockUsers.find(u => u.email === email.trim());
-      if (!userExists) {
-        return { success: false, error: 'No user found with this email address' };
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo: `${window.location.origin}/reset-password`
+      });
+
+      if (error) {
+        return { success: false, error: error.message };
       }
 
-      // In a real app, this would send an email
-      console.log('Password reset email sent (simulated)');
       return { success: true };
     } catch (error) {
       console.error('Unexpected password reset error:', error);
@@ -259,19 +314,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const updatePassword = async (password: string) => {
     try {
-      if (!user) {
-        return { success: false, error: 'No user logged in' };
-      }
+      const { error } = await supabase.auth.updateUser({
+        password
+      });
 
-      console.log('Updating password...');
-      
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Update password in mock database
-      const userIndex = mockUsers.findIndex(u => u.id === user.id);
-      if (userIndex !== -1) {
-        mockUsers[userIndex].password = password;
+      if (error) {
+        return { success: false, error: error.message };
       }
 
       return { success: true };
@@ -283,6 +331,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const value = {
     user,
+    client,
     loading,
     signIn,
     signUp,
