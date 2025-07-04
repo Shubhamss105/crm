@@ -47,7 +47,7 @@ export const SMSModal: React.FC<SMSModalProps> = ({
   const processTemplate = (template: string) => {
     return template
       .replace(/{{name}}/g, lead.name)
-      .replace(/{{company}}/g, lead.company || 'your company')
+      .replace(/{{company}}/g, () => lead.company || 'your company')
       .replace(/{{user}}/g, 'Alice Johnson');
   };
 
