@@ -36,6 +36,7 @@ export interface Opportunity {
 
 export interface Customer {
   id: string;
+  user_id: string; // Added user_id
   name: string;
   email: string;
   phone?: string;
@@ -43,9 +44,9 @@ export interface Customer {
   addresses: Address[];
   language: string;
   currency: string;
-  totalValue: number;
-  createdAt: Date;
-  lastActivity: Date;
+  total_value: number; // Changed from totalValue
+  created_at: string;   // Changed from createdAt, type string
+  last_activity: string; // Changed from lastActivity, type string
   tags: string[];
   notes?: string;
 }
