@@ -16,7 +16,7 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onSubmit, 
     company: '',
     language: 'English',
     currency: 'USD',
-    totalValue: 0,
+    total_value: 0,
     notes: '',
     tags: [] as string[]
   });
@@ -32,7 +32,7 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onSubmit, 
         company: customer.company || '',
         language: customer.language,
         currency: customer.currency,
-        totalValue: customer.totalValue,
+        total_value: customer.total_value,
         notes: customer.notes || '',
         tags: customer.tags
       });
@@ -212,8 +212,8 @@ export const CustomerForm: React.FC<CustomerFormProps> = ({ customer, onSubmit, 
                   type="number"
                   min="0"
                   step="0.01"
-                  value={formData.totalValue}
-                  onChange={(e) => setFormData({ ...formData, totalValue: parseFloat(e.target.value) || 0 })}
+                  value={formData.total_value}
+                  onChange={(e) => setFormData({ ...formData, total_value: parseFloat(e.target.value) || 0 })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>

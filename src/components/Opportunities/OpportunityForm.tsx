@@ -19,10 +19,10 @@ export const OpportunityForm: React.FC<OpportunityFormProps> = ({
     currency: 'USD',
     stage: 'prospecting' as Opportunity['stage'],
     probability: 25,
-    expectedCloseDate: '',
-    assignedTo: '',
+    expected_close_date: '',
+    assigned_to: '',
     description: '',
-    nextAction: '',
+    next_action: '',
     tags: [] as string[]
   });
 
@@ -34,10 +34,10 @@ export const OpportunityForm: React.FC<OpportunityFormProps> = ({
         currency: opportunity.currency,
         stage: opportunity.stage,
         probability: opportunity.probability,
-        expectedCloseDate: opportunity.expectedCloseDate.toISOString().split('T')[0],
-        assignedTo: opportunity.assignedTo,
+        expected_close_date: opportunity.expected_close_date,
+        assigned_to: opportunity.assigned_to,
         description: opportunity.description || '',
-        nextAction: opportunity.nextAction || '',
+        next_action: opportunity.next_action || '',
         tags: opportunity.tags
       });
     } else {
@@ -46,7 +46,7 @@ export const OpportunityForm: React.FC<OpportunityFormProps> = ({
       defaultDate.setDate(defaultDate.getDate() + 30);
       setFormData(prev => ({
         ...prev,
-        expectedCloseDate: defaultDate.toISOString().split('T')[0]
+        expected_close_date: defaultDate.toISOString().split('T')[0]
       }));
     }
   }, [opportunity]);
@@ -55,7 +55,7 @@ export const OpportunityForm: React.FC<OpportunityFormProps> = ({
     e.preventDefault();
     onSubmit({
       ...formData,
-      expectedCloseDate: new Date(formData.expectedCloseDate)
+      expected_close_date: new Date(formData.expected_close_date)
     });
   };
 
@@ -181,8 +181,8 @@ export const OpportunityForm: React.FC<OpportunityFormProps> = ({
               <input
                 type="date"
                 required
-                value={formData.expectedCloseDate}
-                onChange={(e) => setFormData({ ...formData, expectedCloseDate: e.target.value })}
+                value={formData.expected_close_date}
+                onChange={(e) => setFormData({ ...formData, expected_close_date: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
@@ -193,8 +193,8 @@ export const OpportunityForm: React.FC<OpportunityFormProps> = ({
               </label>
               <select
                 required
-                value={formData.assignedTo}
-                onChange={(e) => setFormData({ ...formData, assignedTo: e.target.value })}
+                value={formData.assigned_to}
+                onChange={(e) => setFormData({ ...formData, assigned_to: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
                 <option value="">Select assignee</option>
@@ -224,8 +224,8 @@ export const OpportunityForm: React.FC<OpportunityFormProps> = ({
             </label>
             <input
               type="text"
-              value={formData.nextAction}
-              onChange={(e) => setFormData({ ...formData, nextAction: e.target.value })}
+              value={formData.next_action}
+              onChange={(e) => setFormData({ ...formData, next_action: e.target.value })}
               placeholder="e.g., Schedule demo, Send proposal, Follow up call"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
