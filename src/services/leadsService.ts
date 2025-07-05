@@ -1,25 +1,62 @@
-import { Lead, CommunicationRecord } from '../types/index';
+import { Lead, CommunicationRecord, ModulePermission } from '../types/index'; // Added ModulePermission
 import { supabase } from '../lib/supabaseClient';
 
 
 export const leadsService = {
-  // Fetch paginated leads for the authenticated user
-  async getLeads(userId: string, page: number, limit: number = 10): Promise<{ data: Lead[]; total: number }> {
+  // Fetch paginated leads for the authenticated user, considering their permissions
+  async getLeads(
+    currentLoggedInUserId: string, // ID of the user making the request
+    page: number,
+    limit: number = 10,
+    modulePermissions?: ModulePermission,
+    // The original userId parameter might have been for tenancy/organization. Let's clarify.
+    // For now, assuming leads are generally scoped by an org_id or similar,
+    // or if not, view:all shows all. If user_id on leads table IS the creator/owner for tenancy:
+    tenancyUserIdFilter?: string // This would be the ID used for the general .eq('user_id', tenancyUserIdFilter)
+  ): Promise<{ data: Lead[]; total: number }> {
+
+    if (modulePermissions?.view_type === 'none') {
+      return { data: [], total: 0 };
+    }
+
     const start = (page - 1) * limit;
     const end = start + limit - 1;
 
-    const { data, error, count } = await supabase
+    let query = supabase
       .from('leads')
-      .select('*', { count: 'exact' })
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false })
-      .range(start, end);
+      .select('*', { count: 'exact' });
 
-    if (error) throw new Error(error.message);
+    // Apply tenancy filter if provided (e.g., all leads created by users in the same org)
+    // This is a placeholder for how multi-tenancy might be applied.
+    // If your 'leads.user_id' IS the creator and 'view:all' means all by that creator,
+    // then tenancyUserIdFilter would be that creator's ID.
+    // If 'leads.user_id' is more like an organization_id, that logic would apply here.
+    // For RBAC, the crucial part is below.
+    if (tenancyUserIdFilter) { // This is the original .eq('user_id', userId) logic
+        query = query.eq('user_id', tenancyUserIdFilter);
+    }
+
+
+    // Apply RBAC view permissions
+    if (modulePermissions?.view_type === 'assigned') {
+      query = query.eq('assigned_to', currentLoggedInUserId);
+    }
+    // For 'view:all', no additional filtering based on assignment is done here.
+    // RLS policies on Supabase should enforce overall data visibility.
+
+    query = query.order('created_at', { ascending: false }).range(start, end);
+
+    const { data, error, count } = await query;
+
+    if (error) {
+      console.error("Error fetching leads:", error);
+      throw new Error(error.message);
+    }
     return { data: data as Lead[], total: count || 0 };
   },
 
   // Create a new lead
+  // userId here is the creator of the lead
   async createLead(leadData: Partial<Lead>, userId: string): Promise<Lead> {
     const newLead = {
       ...leadData,

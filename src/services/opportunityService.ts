@@ -1,7 +1,7 @@
-import { Opportunity } from '../types/index';
+import { Opportunity, ModulePermission } from '../types/index'; // Added ModulePermission
 import { supabase } from '../lib/supabaseClient';
 
-// Define a type for potential filters if we want to make it more specific
+// Define a type for potential filters
 // For now, using Partial<Opportunity> for flexibility, but a dedicated filter type is good practice.
 export interface OpportunityFilters {
   name?: string;
@@ -17,45 +17,68 @@ export interface OpportunityFilters {
 export const opportunityService = {
   // Fetch paginated opportunities
   async getOpportunities(
-    userId: string,
+    currentLoggedInUserId: string, // ID of the user making the request (for 'assigned' view)
     page: number,
     limit: number = 10,
-    filters?: OpportunityFilters,
+    modulePermissions?: ModulePermission,
+    // Optional: Pass other filters from UI
+    uiFilters?: OpportunityFilters,
+    // Optional: Pass tenancy filter if opportunities.user_id is for org/tenancy rather than creator
+    tenancyUserIdFilter?: string,
     sortBy: string = 'created_at',
     sortAsc: boolean = false
   ): Promise<{ data: Opportunity[]; total: number }> {
+
+    if (modulePermissions?.view_type === 'none') {
+      return { data: [], total: 0 };
+    }
+
     const start = (page - 1) * limit;
     const end = start + limit - 1;
 
     let query = supabase
       .from('opportunities')
-      .select('*', { count: 'exact' })
-      .eq('user_id', userId);
+      .select('*, user_profiles!opportunities_assigned_to_fkey (name), customers (name), leads (name)', { count: 'exact' });
+      // Assuming 'assigned_to' is a FK to user_profiles.user_id for fetching assignee name.
+      // And customer_id, lead_id are FKs for fetching their names. Adjust if FK names are different.
 
-    // Apply filters
-    if (filters) {
-      if (filters.name) {
-        query = query.ilike('name', `%${filters.name}%`);
+    // Apply tenancy filter (e.g., if opportunities.user_id is an organization_id or creator_id for overall scope)
+    if (tenancyUserIdFilter) {
+        query = query.eq('user_id', tenancyUserIdFilter);
+    }
+
+    // Apply RBAC view permissions
+    if (modulePermissions?.view_type === 'assigned') {
+      query = query.eq('assigned_to', currentLoggedInUserId);
+    }
+    // For 'view:all', RLS policies on Supabase should enforce overall data visibility.
+    // If uiFilters are passed, they are applied regardless of 'assigned' or 'all' view,
+    // but 'assigned' takes precedence for the assigned_to field.
+
+    // Apply UI filters
+    if (uiFilters) {
+      if (uiFilters.name) {
+        query = query.ilike('name', `%${uiFilters.name}%`);
       }
-      if (filters.stage) {
-        query = query.eq('stage', filters.stage);
+      if (uiFilters.stage) {
+        query = query.eq('stage', uiFilters.stage);
       }
-      if (filters.assigned_to) {
-        query = query.eq('assigned_to', filters.assigned_to);
+      // Only apply assigned_to from UI filters if view is not 'assigned' (which overrides it)
+      if (modulePermissions?.view_type !== 'assigned' && uiFilters.assigned_to) {
+        query = query.eq('assigned_to', uiFilters.assigned_to);
       }
-      if (filters.min_value !== undefined) {
-        query = query.gte('value', filters.min_value);
+      if (uiFilters.min_value !== undefined) {
+        query = query.gte('value', uiFilters.min_value);
       }
-      if (filters.max_value !== undefined) {
-        query = query.lte('value', filters.max_value);
+      if (uiFilters.max_value !== undefined) {
+        query = query.lte('value', uiFilters.max_value);
       }
-      if (filters.expected_close_date_after) {
-        query = query.gte('expected_close_date', filters.expected_close_date_after);
+      if (uiFilters.expected_close_date_after) {
+        query = query.gte('expected_close_date', uiFilters.expected_close_date_after);
       }
-      if (filters.expected_close_date_before) {
-        query = query.lte('expected_close_date', filters.expected_close_date_before);
+      if (uiFilters.expected_close_date_before) {
+        query = query.lte('expected_close_date', uiFilters.expected_close_date_before);
       }
-      // Add more filters as needed
     }
 
     // Apply sorting
@@ -74,6 +97,7 @@ export const opportunityService = {
   },
 
   // Create a new opportunity
+  // userId here is the creator of the opportunity
   async createOpportunity(opportunityData: Partial<Opportunity>, userId: string): Promise<Opportunity> {
     const newOpportunity = {
       ...opportunityData,

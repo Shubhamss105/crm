@@ -1,113 +1,163 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { useMutation, useQueryClient, QueryClient, QueryClientProvider } from 'react-query';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  ReactNode,
+  useCallback,
+} from "react";
 import {
-  signUpWithSupabase,
+  useMutation,
+  useQueryClient,
+  QueryClient,
+  QueryClientProvider,
+} from "react-query";
+import {
+  signUpWithSupabase, // This will create an auth.users entry
   signInWithSupabase,
   signOutFromSupabase,
   onAuthStateChange,
-  getUser as getSupabaseUser,
-  updateUserMetadata as updateSupabaseUserMetadata,
-} from '../services/authService';
-import type { User as SupabaseUser, Session as SupabaseSession } from '@supabase/supabase-js';
-
-// Define a more specific User type for the application if needed,
-// or use SupabaseUser directly if its structure is sufficient.
-// For now, we'll use a simplified version that matches the old structure
-// and adapt SupabaseUser to it.
-interface AppUser {
-  id: string;
-  name: string; // This will come from user_metadata
-  email: string | undefined;
-  role: 'admin' | 'manager' | 'sales' | 'marketing'; // This will come from user_metadata
-  team: string; // This will come from user_metadata
-  avatar_url?: string; // This will come from user_metadata
-  phone?: string; // This will come from user_metadata
-  location?: string; // This will come from user_metadata
-  bio?: string; // This will come from user_metadata
-  timezone?: string; // This will come from user_metadata
-  language?: string; // This will come from user_metadata
-  date_format?: string; // This will come from user_metadata
-  created_at?: string;
-  updated_at?: string;
-}
+  // getUser as getSupabaseUser, // We'll use onAuthStateChange to get the Supabase user
+  // updateUserMetadata as updateSupabaseUserMetadata, // We'll update user_profiles table instead
+} from "../services/authService";
+import { userService } from "../services/userService"; // For user_profiles
+import { permissionsService } from "../services/permissionsService"; // For permissions
+import type {
+  User as SupabaseUser,
+  Session as SupabaseSession,
+} from "@supabase/supabase-js";
+import { UserProfile, UserPermissions, ModulePermission } from "../types"; // Updated types
+import { supabase } from "../lib/supabaseClient";
 
 interface AuthContextType {
-  user: AppUser | null;
+  user: UserProfile | null; // Changed from AppUser
   session: SupabaseSession | null;
-  loading: boolean; // For initial auth state loading
-  isSigningIn: boolean; // For sign-in mutation
-  isSigningUp: boolean; // For sign-up mutation
-  isSigningOut: boolean; // For sign-out mutation
-  signIn: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  signUp: (email: string, password: string, userData: { name: string; role?: string; team?: string }) => Promise<{ success: boolean; error?: string }>;
+  permissions: UserPermissions | null; // Added permissions
+  loading: boolean;
+  isSigningIn: boolean;
+  isSigningUp: boolean;
+  isSigningOut: boolean;
+  signIn: (
+    email: string,
+    password: string
+  ) => Promise<{ success: boolean; error?: string }>;
+  // Sign up now might not need role/team directly if default role is assigned by trigger
+  // Or, if creating sub-users, that's a separate flow handled by Super Admin UI
+  signUp: (
+    email: string,
+    password: string,
+    userData: { name: string }
+  ) => Promise<{ success: boolean; error?: string; userId?: string }>;
   signOut: () => Promise<{ success: boolean; error?: string }>;
-  updateProfile: (updates: Partial<AppUser>) => Promise<{ success: boolean; error?: string }>;
-  // resetPassword and updatePassword would need specific Supabase calls
-  // For simplicity, these are not fully implemented here but can be added
-  // resetPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
-  // updatePassword: (password: string) => Promise<{ success: boolean; error?: string }>;
-  logout: () => Promise<{ success: boolean; error?: string }>; // Alias for signOut
+  updateProfile: (
+    userId: string,
+    updates: Partial<Pick<UserProfile, "name" | "avatar_url">>
+  ) => Promise<{ success: boolean; error?: string }>;
+  logout: () => Promise<{ success: boolean; error?: string }>;
+  // Permission helpers
+  getModulePermissions: (module: string) => ModulePermission | undefined;
+  can:
+    | ((module: string, action: "create" | "edit" | "delete") => boolean)
+    | ((permission: "manage_users" | "manage_roles") => boolean);
+  canView: (module: string, viewTypeToMatch?: "all" | "assigned") => boolean;
+  isSuperAdmin: () => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const queryClient = new QueryClient();
 
-const adaptSupabaseUser = (supabaseUser: SupabaseUser | null): AppUser | null => {
-  if (!supabaseUser) return null;
-  return {
-    id: supabaseUser.id,
-    email: supabaseUser.email,
-    name: supabaseUser.user_metadata?.name || 'N/A',
-    role: supabaseUser.user_metadata?.role || 'sales',
-    team: supabaseUser.user_metadata?.team || 'Default Team',
-    avatar_url: supabaseUser.user_metadata?.avatar_url,
-    phone: supabaseUser.user_metadata?.phone,
-    location: supabaseUser.user_metadata?.location,
-    bio: supabaseUser.user_metadata?.bio,
-    timezone: supabaseUser.user_metadata?.timezone || 'UTC',
-    language: supabaseUser.user_metadata?.language || 'en',
-    date_format: supabaseUser.user_metadata?.date_format || 'YYYY-MM-DD',
-    created_at: supabaseUser.created_at,
-    updated_at: supabaseUser.updated_at || supabaseUser.created_at, // Supabase might not have updated_at directly on user object in the same way
-  };
-};
-
-export const AuthProviderComponent: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<AppUser | null>(null);
+export const AuthProviderComponent: React.FC<{ children: ReactNode }> = ({
+  children,
+}) => {
+  const [user, setUser] = useState<UserProfile | null>(null);
   const [session, setSession] = useState<SupabaseSession | null>(null);
-  const [loadingInitial, setLoadingInitial] = useState(true); // For initial load
+  const [permissions, setPermissions] = useState<UserPermissions | null>(null);
+  const [loadingInitial, setLoadingInitial] = useState(true);
   const reactQueryClient = useQueryClient();
 
-  useEffect(() => {
-    const fetchUser = async () => {
-      const currentUser = await getSupabaseUser();
-      setUser(adaptSupabaseUser(currentUser));
-      const currentSession = (await import('../services/authService')).getSession();
-      setSession(await currentSession);
-      setLoadingInitial(false);
-    };
-    fetchUser();
+  const loadUserAndPermissions = useCallback(
+    async (supabaseUser: SupabaseUser | null) => {
+      if (supabaseUser) {
+        try {
+          const userProfile = await userService.getUserProfile(supabaseUser.id);
+          if (userProfile) {
+            setUser(userProfile);
+            reactQueryClient.setQueryData(
+              ["userProfile", supabaseUser.id],
+              userProfile
+            );
 
-    const authSubscription = onAuthStateChange(async (_event, session) => {
-      setSession(session);
-      setUser(adaptSupabaseUser(session?.user ?? null));
-      // Optionally, invalidate queries that depend on auth state
-      reactQueryClient.invalidateQueries('user');
-    });
+            const userPermissions = await permissionsService.getUserPermissions(
+              supabaseUser.id
+            );
+            setPermissions(userPermissions);
+            reactQueryClient.setQueryData(
+              ["userPermissions", supabaseUser.id],
+              userPermissions
+            );
+          } else {
+            // Profile might not exist yet if trigger is slow or user signed up but profile creation failed
+            // Or if it's a new user and trigger hasn't fired/completed.
+            console.warn(
+              `User profile not found for ${supabaseUser.id}. User might need to complete profile setup or trigger is pending.`
+            );
+            setUser(null); // Or a minimal UserProfile based on SupabaseUser
+            setPermissions(null);
+          }
+        } catch (error) {
+          console.error("Error loading user profile or permissions:", error);
+          setUser(null);
+          setPermissions(null);
+        }
+      } else {
+        setUser(null);
+        setPermissions(null);
+      }
+      setLoadingInitial(false);
+    },
+    [reactQueryClient]
+  );
+
+  useEffect(() => {
+    // Check initial auth state
+    const checkInitialAuth = async () => {
+      const {
+        data: { session: initialSession },
+      } = await supabase.auth.getSession();
+      setSession(initialSession);
+      await loadUserAndPermissions(initialSession?.user ?? null);
+    };
+    checkInitialAuth();
+
+    const { data: authListener } = onAuthStateChange(
+      async (_event, newSession) => {
+        setSession(newSession);
+        await loadUserAndPermissions(newSession?.user ?? null);
+        reactQueryClient.invalidateQueries([
+          "userProfile",
+          newSession?.user?.id,
+        ]);
+        reactQueryClient.invalidateQueries([
+          "userPermissions",
+          newSession?.user?.id,
+        ]);
+      }
+    );
 
     return () => {
-      authSubscription?.unsubscribe();
+      authListener?.subscription.unsubscribe();
     };
-  }, [reactQueryClient]);
+  }, [loadUserAndPermissions, reactQueryClient]);
 
   const signInMutation = useMutation(
-    ({ email, password }: { email: string; password: string }) => signInWithSupabase({ email, password }),
+    ({ email, password }: { email: string; password: string }) =>
+      signInWithSupabase({ email, password }),
     {
-      onSuccess: (data) => {
-        setUser(adaptSupabaseUser(data.user));
-        setSession(data.session);
-        reactQueryClient.setQueryData('user', adaptSupabaseUser(data.user));
+      onSuccess: async (data) => {
+        // onAuthStateChange will handle setting user and permissions
+        // setSession(data.session); // Done by onAuthStateChange
+        // await loadUserAndPermissions(data.user); // Done by onAuthStateChange
       },
       onError: (error: any) => {
         console.error("Sign in error:", error.message);
@@ -116,21 +166,29 @@ export const AuthProviderComponent: React.FC<{ children: ReactNode }> = ({ child
   );
 
   const signUpMutation = useMutation(
-    ({ email, password, metadata }: { email: string; password: string; metadata: any }) =>
-      signUpWithSupabase({ email, password, options: { data: metadata } }),
+    // User metadata during Supabase signUp is for auth.users.user_metadata
+    // The handle_new_user trigger should create the user_profile entry.
+    // We pass name here to be potentially used by the trigger if it reads raw_user_meta_data.
+    ({
+      email,
+      password,
+      name,
+    }: {
+      email: string;
+      password: string;
+      name: string;
+    }) =>
+      signUpWithSupabase({
+        email,
+        password,
+        options: { data: { full_name: name } },
+      }),
     {
       onSuccess: (data) => {
-        // Supabase signUp might return a user that needs email confirmation
-        // or might automatically sign them in. Handle accordingly.
-        // For now, we assume immediate user availability or rely on onAuthStateChange.
-         if (data.user) {
-          setUser(adaptSupabaseUser(data.user));
-          setSession(data.session);
-          reactQueryClient.setQueryData('user', adaptSupabaseUser(data.user));
-        }
-        // If email confirmation is needed, data.user might be null initially,
-        // and data.session might also be null.
-        // The onAuthStateChange listener will update the user state once confirmed and logged in.
+        // onAuthStateChange will handle setting user and permissions if auto-verified & logged in.
+        // If email confirmation is required, user won't be set here.
+        // The `userId` can be returned for UIs that might want to immediately do something,
+        // but generally, rely on onAuthStateChange.
       },
       onError: (error: any) => {
         console.error("Sign up error:", error.message);
@@ -142,24 +200,31 @@ export const AuthProviderComponent: React.FC<{ children: ReactNode }> = ({ child
     onSuccess: () => {
       setUser(null);
       setSession(null);
-      reactQueryClient.setQueryData('user', null);
+      setPermissions(null);
+      reactQueryClient.clear(); // Clear all query cache on sign out
     },
     onError: (error: any) => {
       console.error("Sign out error:", error.message);
     },
   });
 
+  // Update profile now targets user_profiles table via userService
   const updateProfileMutation = useMutation(
-    (updates: Partial<AppUser>) => {
-      // Adapt AppUser updates to Supabase metadata structure
-      const { id, email, created_at, updated_at, ...metadata } = updates;
-      return updateSupabaseUserMetadata(metadata);
-    },
+    ({
+      userId,
+      updates,
+    }: {
+      userId: string;
+      updates: Partial<Pick<UserProfile, "name" | "avatar_url">>;
+    }) => userService.updateSubUser(userId, updates), // Using updateSubUser as it updates user_profiles
     {
-      onSuccess: (data) => {
-        if (data.user) {
-          setUser(adaptSupabaseUser(data.user));
-          reactQueryClient.setQueryData('user', adaptSupabaseUser(data.user));
+      onSuccess: (updatedProfile) => {
+        if (updatedProfile) {
+          setUser(updatedProfile);
+          reactQueryClient.setQueryData(
+            ["userProfile", updatedProfile.user_id],
+            updatedProfile
+          );
         }
       },
       onError: (error: any) => {
@@ -168,40 +233,30 @@ export const AuthProviderComponent: React.FC<{ children: ReactNode }> = ({ child
     }
   );
 
-
   const handleSignIn = async (email: string, password: string) => {
     try {
       await signInMutation.mutateAsync({ email, password });
       return { success: true };
     } catch (error: any) {
-      return { success: false, error: error.message || 'Sign in failed' };
+      return { success: false, error: error.message || "Sign in failed" };
     }
   };
 
-  const handleSignUp = async (email: string, password: string, userData: { name: string; role?: string; team?: string }) => {
-    const metadata = {
-      name: userData.name,
-      role: userData.role || 'sales',
-      team: userData.team || 'Default Team',
-      // You can add more metadata here, like avatar_url, etc.
-      // For example, a default avatar or initial settings
-      avatar_url: 'https://images.pexels.com/photos/774909/pexels-photo-774909.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&fit=crop',
-      phone: '',
-      location: '',
-      bio: '',
-      timezone: 'America/New_York',
-      language: 'en',
-      date_format: 'MM/DD/YYYY',
-    };
+  const handleSignUp = async (
+    email: string,
+    password: string,
+    userData: { name: string }
+  ) => {
     try {
-      await signUpMutation.mutateAsync({ email, password, metadata });
-      // Supabase handles email confirmation flow if enabled.
-      // The user might not be immediately "logged in" if confirmation is required.
-      // The onAuthStateChange listener should handle the user state update post-confirmation.
-      // If sign up automatically logs in the user, the user state will be updated by the mutation's onSuccess.
-      return { success: true, error: signUpMutation.error?.message };
+      const { data, error } = await signUpMutation.mutateAsync({
+        email,
+        password,
+        name: userData.name,
+      });
+      if (error) throw error;
+      return { success: true, userId: data?.user?.id };
     } catch (error: any) {
-      return { success: false, error: error.message || 'Sign up failed' };
+      return { success: false, error: error.message || "Sign up failed" };
     }
   };
 
@@ -210,42 +265,124 @@ export const AuthProviderComponent: React.FC<{ children: ReactNode }> = ({ child
       await signOutMutation.mutateAsync();
       return { success: true };
     } catch (error: any) {
-      return { success: false, error: error.message || 'Sign out failed' };
+      return { success: false, error: error.message || "Sign out failed" };
     }
   };
 
-  const handleUpdateProfile = async (updates: Partial<AppUser>) => {
+  const handleUpdateProfile = async (
+    userId: string,
+    updates: Partial<Pick<UserProfile, "name" | "avatar_url">>
+  ) => {
     try {
-      await updateProfileMutation.mutateAsync(updates);
+      await updateProfileMutation.mutateAsync({ userId, updates });
       return { success: true };
     } catch (error: any) {
-      return { success: false, error: error.message || 'Profile update failed'};
+      return {
+        success: false,
+        error: error.message || "Profile update failed",
+      };
     }
   };
 
-  const value = {
+  // Permission helper functions
+  const getModulePermissions = useCallback(
+    (module: string): ModulePermission | undefined => {
+      if (permissions?.isSuperAdmin) {
+        return {
+          view_type: "all",
+          can_create: true,
+          can_edit: true,
+          can_delete: true,
+        };
+      }
+      return permissions?.modules?.[module];
+    },
+    [permissions]
+  );
+
+  const can = useCallback(
+    (
+      module: string,
+      action: "create" | "edit" | "delete" | "manage_users" | "manage_roles"
+    ): boolean => {
+      if (permissions?.isSuperAdmin) return true;
+
+      // Specific checks for meta-permissions like 'manage_users'
+      if (action === "manage_users")
+        return (
+          permissions?.modules?.["settings_users"]?.can_create ||
+          permissions?.modules?.["settings_users"]?.can_edit ||
+          permissions?.modules?.["settings_users"]?.can_delete ||
+          false
+        );
+      if (action === "manage_roles")
+        return (
+          permissions?.modules?.["settings_roles"]?.can_create ||
+          permissions?.modules?.["settings_roles"]?.can_edit ||
+          false
+        );
+
+      const modulePerms = getModulePermissions(module);
+      if (!modulePerms) return false;
+
+      switch (action) {
+        case "create":
+          return modulePerms.can_create;
+        case "edit":
+          return modulePerms.can_edit;
+        case "delete":
+          return modulePerms.can_delete;
+        default:
+          return false;
+      }
+    },
+    [permissions, getModulePermissions]
+  );
+
+  const canView = useCallback(
+    (module: string, viewTypeToMatch?: "all" | "assigned"): boolean => {
+      if (permissions?.isSuperAdmin) return true;
+      const modulePerms = getModulePermissions(module);
+      if (!modulePerms || modulePerms.view_type === "none") return false;
+      if (viewTypeToMatch) return modulePerms.view_type === viewTypeToMatch;
+      return true; // If not 'none', then some view permission exists
+    },
+    [permissions, getModulePermissions]
+  );
+
+  const isSuperAdmin = useCallback((): boolean => {
+    return permissions?.isSuperAdmin || false;
+  }, [permissions]);
+
+  const value: AuthContextType = {
     user,
     session,
-    loading: loadingInitial || signInMutation.isLoading || signUpMutation.isLoading || signOutMutation.isLoading, // Combined loading state
+    permissions,
+    loading:
+      loadingInitial ||
+      signInMutation.isLoading ||
+      signUpMutation.isLoading ||
+      signOutMutation.isLoading,
     isSigningIn: signInMutation.isLoading,
     isSigningUp: signUpMutation.isLoading,
     isSigningOut: signOutMutation.isLoading,
     signIn: handleSignIn,
     signUp: handleSignUp,
     signOut: handleSignOut,
-    logout: handleSignOut, // Alias
+    logout: handleSignOut,
     updateProfile: handleUpdateProfile,
+    getModulePermissions,
+    can,
+    canView,
+    isSuperAdmin,
   };
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-// Wrap AuthProviderComponent with QueryClientProvider
-export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+export const AuthProvider: React.FC<{ children: ReactNode }> = ({
+  children,
+}) => {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProviderComponent>{children}</AuthProviderComponent>
@@ -253,11 +390,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   );
 };
 
-
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
 };
